@@ -245,6 +245,13 @@ pub struct ProviderConnectionTest {
     pub detail: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderInstallResult {
+    pub detail: String,
+    pub installed: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderCapabilities {

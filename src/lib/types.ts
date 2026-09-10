@@ -21,6 +21,7 @@ export type ProviderCapabilities = { textInput: boolean; imageInput: boolean; mu
 export type ProviderStatus = { id: string; name: string; kind: "agent" | "image"; installed: boolean; executable?: string; status: string; detail: string; modes: ProviderMode[]; capabilities: ProviderCapabilities; configurable: boolean; hasApiKey: boolean; baseUrl?: string; model?: string };
 export type ImageProviderInput = { id: string; name: string; providerType: "grok" | "openai-compatible"; baseUrl: string; apiKey: string; model: string };
 export type ProviderConnectionTest = { ok: boolean; detail: string };
+export type ProviderInstallResult = { detail: string; installed: boolean };
 export type GenerationQuality = "low" | "mid" | "high" | "custom";
 export type FrameMode = "fixed" | "auto";
 export type ChatGenerationProfile = { profileVersion: number; quality: GenerationQuality; width: number; height: number; frames: number; fps: number; frameMode: FrameMode; minFrames: number; maxFrames: number; allowInterpolation: boolean; allowAutoAdjust: boolean; model: string; reasoningEffort: string; imageProviderId: string };

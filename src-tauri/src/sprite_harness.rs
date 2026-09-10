@@ -32,6 +32,8 @@ const INTERNAL_ACCEPTANCE_LOOP: &str =
 const BIPED_LOCOMOTION_IDENTITY: &str = include_str!(
     "../resources/skills/sprite-director/references/biped-locomotion-identity.md"
 );
+const CURSOR_IMAGE_CONTRACT: &str =
+    include_str!("../resources/skills/sprite-director/references/cursor-image-contract.md");
 
 #[derive(Debug, PartialEq)]
 enum HarnessKind {
@@ -376,10 +378,12 @@ pub fn studio_prompt(
     context: Option<&str>,
     generation: Option<&GenerationOptions>,
     command: Option<&str>,
+    agent_provider: Option<&str>,
 ) -> String {
     let context = context.unwrap_or("").trim();
     if command == Some("pack") {
-        return format!(
+        return apply_cursor_image_contract(
+            format!(
             "You are the creation agent inside Sprite Studio. The user requested a coordinated asset pack. Follow the pack harness exactly. Preserve every unrelated workspace file. Do not treat the items as animation frames. The user may specify the art style in plain language; that explicit style overrides the saved preset.\n\nSELECTED CHAT CONTEXT\n{}\n\nASSET PACK HARNESS\n{}\n\nSTYLE PRESETS\n{}\n\nQUALITY GATES\n{}\n\nINTERNAL ACCEPTANCE LOOP\n{}\n\nUSER REQUEST\n{}",
             if context.is_empty() { "No predefined image context. Infer only from this request." } else { context },
             ASSET_PACK_HARNESS,
@@ -387,17 +391,22 @@ pub fn studio_prompt(
             QUALITY_GATES,
             INTERNAL_ACCEPTANCE_LOOP,
             prompt
+        ),
+            agent_provider,
         );
     }
     if command == Some("rig") {
         let (width, height) = generation
             .map(|options| (options.width, options.height))
             .unwrap_or((0, 0));
-        return format!(
+        return apply_cursor_image_contract(
+            format!(
             "You are the creation agent inside Sprite Studio. The user requested a native rig — named points, capsule bones, and pose frames — for Sprite Studio's deterministic Rust rig engine. The app captures your `rig-suggestion` JSON block, opens it in the Rig editor, and renders the animation itself; do not write rendered frames, masks, or rig-rendering scripts for this request. If no usable sprite master is attached or referenced, first follow the character harness to create exactly one clean transparent source master, save it under `assets/characters/`, and rig that exact file.\n\n{}\n\nSELECTED CHAT CONTEXT\n{}\n\nUSER REQUEST\n{}\n\nAnswer with the rig-suggestion JSON block now.",
             rig_suggestion_prompt(prompt, "biped", width, height),
             if context.is_empty() { "No saved style override." } else { context },
             prompt
+        ),
+            agent_provider,
         );
     }
     // Explicit user wording owns routing. For deictic requests such as
@@ -568,7 +577,8 @@ pub fn studio_prompt(
     } else {
         "This routed job has no paired-limb identity requirement."
     };
-    format!(
+    apply_cursor_image_contract(
+        format!(
         "You are the creation agent inside Sprite Studio. Obey the routed harness. Explicit subject words in the current USER REQUEST and an explicit slash command own routing. When the request says only `this`, `it`, or `selected`, the selected/focused asset filename may identify the subject; its legacy folder, worktree label, project-section name, description, reference category, and style prose must never override the subject. All router, harness, preset, quality-gate, and internal-review text you need is embedded in this prompt; do not search the workspace for `references/*.md` files. ImageGen may create one source master. Animation timing and poses come from a saved deterministic rig, never from independently invented AI frames. Render rig-only animations with Sprite Studio's native rig engine or `.sprite-studio/sprite_rig.py`. Use ImageGen on animation frames only when the user explicitly selected AI polish or experimental full redraw, and only after rough rig frames exist as pose authority. Pose sheets remain forbidden. Preserve every unrelated workspace asset: never move, delete, rename, or overwrite existing assets unless the user explicitly asked to modify that exact asset. The routed asset category is a hard contract: the rig category, output folder, generation manifest category, scanned assets, and final response must all match the routed category below. Never reuse an older rig or source because its filename or appearance is similar; provenance must trace to the exact focused reference. Before reporting success, run the silent internal acceptance loop, validate the saved rig and `.sprite-studio/last-generation.json`, preview at least three cycles, and run native quality analysis. Visual imperfections must degrade gracefully: after one repair attempt, publish the best structurally valid candidate and simplify motion when needed, ending with `GENERATION_WARNING: <concise limitation>`. An explicit animation request requires at least two distinct frames; never call a one-frame fallback an animation. Use `GENERATION_FAILED` only when no valid workspace-confined result of the requested kind can be produced at all. Never restore an old manifest as new output. Keep the user-facing reply to the result and any warning in at most three short sentences; never narrate the internal review or retry process.\n\n\
          DETERMINISTIC HARNESS BRIEF\n\
          - routed harness: {}\n\
@@ -610,7 +620,21 @@ pub fn studio_prompt(
         QUALITY_GATES,
         INTERNAL_ACCEPTANCE_LOOP,
         prompt
+    ),
+        agent_provider,
     )
+}
+
+fn apply_cursor_image_contract(prompt: String, agent_provider: Option<&str>) -> String {
+    if agent_provider != Some("cursor") {
+        return prompt;
+    }
+    match prompt.split_once("\n\n") {
+        Some((opening, rest)) => format!(
+            "{opening}\n\nCURSOR IMAGE CONTRACT\n{CURSOR_IMAGE_CONTRACT}\n\n{rest}"
+        ),
+        None => format!("{prompt}\n\nCURSOR IMAGE CONTRACT\n{CURSOR_IMAGE_CONTRACT}"),
+    }
 }
 
 #[cfg(test)]
@@ -649,7 +673,7 @@ mod tests {
             allow_auto_adjust: true,
         };
         let character =
-            studio_prompt("character run cycle", None, Some(&generation), Some("animate"));
+            studio_prompt("character run cycle", None, Some(&generation), Some("animate"), None);
         assert!(
             character.contains("PAIRED-LIMB IDENTITY CONTRACT"),
             "animated characters must carry the limb identity lock"
@@ -660,14 +684,14 @@ mod tests {
             character.contains("Near contact") && character.contains("Far contact"),
             "the run phase plan must use NEAR/FAR leg phases"
         );
-        let effect = studio_prompt("explosion effect", None, Some(&generation), Some("animate"));
+        let effect = studio_prompt("explosion effect", None, Some(&generation), Some("animate"), None);
         assert_eq!(
             effect.matches("This routed job has no paired-limb identity requirement.")
                 .count(),
             1,
             "effects must skip the limb identity lock"
         );
-        let single = studio_prompt("character portrait", None, Some(&generation), Some("sprite"));
+        let single = studio_prompt("character portrait", None, Some(&generation), Some("sprite"), None);
         assert!(
             single.contains("This routed job has no paired-limb identity requirement."),
             "static sprites must skip the limb identity lock"
@@ -713,6 +737,7 @@ mod tests {
             Some("ACTIVE REFERENCE IMAGES (ATTACHED AS REAL IMAGE INPUTS)\n- Tilemap_color1.png"),
             Some(&generation),
             None,
+            None,
         );
         assert!(prompt.contains("routed harness: terrain tileset"));
         assert!(prompt.contains("logical canvas: 384x256 pixels"));
@@ -727,6 +752,7 @@ mod tests {
         let prompt = studio_prompt(
             "make a desert terrain tileset",
             Some("Active worktree: Old heroes (character). Selected asset: assets/characters/old_hero.png"),
+            None,
             None,
             None,
         );
@@ -745,6 +771,7 @@ mod tests {
             Some("Active project section: Old heroes.\nContext asset: assets/characters/woodland-rabbit-retry_01.png\nSelected art direction: Pixel RPG."),
             None,
             Some("animate"),
+            None,
         );
 
         assert!(prompt.contains("routed harness: creature"));
@@ -757,6 +784,7 @@ mod tests {
         let prompt = studio_prompt(
             "make a pixel RPG character, single frame",
             Some("Selected style preset: Cozy chibi. rounded cartoon"),
+            None,
             None,
             None,
         );
@@ -775,7 +803,7 @@ mod tests {
 
     #[test]
     fn prompt_embeds_renderer_and_originality_rules() {
-        let prompt = studio_prompt("make a potion icon", None, None, None);
+        let prompt = studio_prompt("make a potion icon", None, None, None, None);
         assert!(prompt.contains("python3 .sprite-studio/sprite_tool.py"));
         assert!(prompt.contains("original design"));
         assert!(prompt.ends_with("make a potion icon"));
@@ -786,6 +814,7 @@ mod tests {
         let prompt = studio_prompt(
             "make me a character, single frame",
             Some("Selected style preset: Cozy chibi. rounded cartoon"),
+            None,
             None,
             None,
         );
@@ -802,6 +831,7 @@ mod tests {
             Some("ACTIVE REFERENCE IMAGES\n- palette [vfx]: /tmp/palette.png"),
             None,
             Some("effect"),
+            None,
         );
         assert!(prompt.contains("routed harness: effect"));
         assert!(prompt.contains("# ImageGen visual-effects harness"));
@@ -813,6 +843,7 @@ mod tests {
     fn routes_elemental_attacks_to_the_effect_harness() {
         let prompt = studio_prompt(
             "make an ice fireball end burst with a transparent background",
+            None,
             None,
             None,
             None,
@@ -829,6 +860,7 @@ mod tests {
             Some("ACTIVE REFERENCE IMAGES (ATTACHED AS REAL IMAGE INPUTS)\n- master: /tmp/master.png"),
             None,
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("source master"));
         assert!(prompt.contains("provenance must trace to the exact focused reference"));
@@ -841,6 +873,7 @@ mod tests {
         let prompt = studio_prompt(
             "make one original cozy chibi herbalist character, single frame",
             Some("Selected style preset: Cozy chibi. polished cozy chibi game character, rounded proportions, oversized expressive head, clean dark outline and simple readable shapes."),
+            None,
             None,
             None,
         );
@@ -873,6 +906,7 @@ mod tests {
             None,
             None,
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("routed harness: creature"));
         assert!(prompt.contains("RIG PLANNING CONTRACT"));
@@ -900,6 +934,7 @@ mod tests {
             None,
             Some(&generation),
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("logical canvas: 128x128 pixels"));
         assert!(prompt.contains("frame count: 8"));
@@ -933,6 +968,7 @@ mod tests {
             Some("ACTIVE REFERENCE IMAGES (ATTACHED AS REAL IMAGE INPUTS)\n- creature.webp"),
             Some(&generation),
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("Frame policy: visual motion recommendation"));
         assert!(prompt.contains("Allowed range: 4–12 frames"));
@@ -961,6 +997,7 @@ mod tests {
             None,
             Some(&generation),
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("routed harness: prop"));
         assert!(prompt.contains("Deterministic game-object rig harness"));
@@ -975,6 +1012,7 @@ mod tests {
             Some("Selected asset: assets/characters/windy_tree_01.png"),
             None,
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("routed harness: terrain"));
         assert!(prompt.contains("asset category: terrain"));
@@ -989,6 +1027,7 @@ mod tests {
             Some("Selected style preset: Pixel RPG"),
             None,
             Some("pack"),
+            None,
         );
         assert!(prompt.contains("ASSET PACK HARNESS"));
         assert!(prompt.contains("do not cap it at 12"));
@@ -1006,6 +1045,7 @@ mod tests {
             Some("Context asset: assets/creatures/rabbit.png"),
             None,
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("saved deterministic rig"));
         assert!(prompt.contains("Rig only (default)"));
@@ -1032,10 +1072,36 @@ mod tests {
             None,
             None,
             Some("animate"),
+            None,
         );
         assert!(prompt.contains("# Internal visual acceptance loop"));
         assert!(prompt.contains("render exactly one replacement attempt"));
         assert!(prompt.contains("wing root continuously anchored"));
         assert!(prompt.contains("do not expose the review transcript"));
+    }
+
+    #[test]
+    fn cursor_runs_override_imagegen_with_generate_image() {
+        let prompt = studio_prompt(
+            "make me a character, single frame",
+            Some("Selected style preset: Cozy chibi. rounded cartoon"),
+            None,
+            None,
+            Some("cursor"),
+        );
+        assert!(prompt.contains("CURSOR IMAGE CONTRACT"));
+        assert!(prompt.contains("GenerateImage"));
+        assert!(prompt.contains("Do not call"));
+        assert!(prompt.contains("image_gen__imagegen"));
+
+        let pack = studio_prompt(
+            "/pack six forest animals in one-bit style",
+            None,
+            None,
+            Some("pack"),
+            Some("cursor"),
+        );
+        assert!(pack.contains("CURSOR IMAGE CONTRACT"));
+        assert!(pack.contains("GenerateImage"));
     }
 }

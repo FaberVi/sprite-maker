@@ -163,7 +163,7 @@ pub fn switch_conversation_provider(
     provider: String,
     state: State<'_, AppState>,
 ) -> CommandResult<Conversation> {
-    if !matches!(provider.as_str(), "codex" | "claude" | "gemini" | "grok") {
+    if !matches!(provider.as_str(), "codex" | "claude" | "gemini" | "grok" | "cursor") {
         return Err(CommandError::new(
             "provider_unsupported",
             "Choose one of the installed chat providers",

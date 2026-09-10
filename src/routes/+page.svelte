@@ -27,7 +27,7 @@
   import WorktreeDialog from "$lib/components/WorktreeDialog.svelte";
   import LogoMark from "$lib/components/LogoMark.svelte";
   import { api } from "$lib/api";
-  import { normalizeGenerationProfile, slashCommand } from "$lib/generation-profiles";
+  import { defaultImageProviderId, normalizeGenerationProfile, slashCommand } from "$lib/generation-profiles";
   import { buildSpriteGroups, type SpriteGroup } from "$lib/sprite-groups";
   import { parseConversationStyle, parseStylePreset, stylePreset, type ConversationStyleId, type StylePresetId } from "$lib/style-presets";
   import { parseCustomArts, parseCustomSkills, type CustomArtStyle, type CustomSkill } from "$lib/library-types";
@@ -262,7 +262,7 @@
   async function listArchivedChats(){if(!workspace)return [];try{return await api.listArchivedConversations(workspace.id);}catch(error){notify(errorMessage(error),"error");return [];}}
   async function restoreArchivedChat(conversation:Conversation){try{const restored=await api.restoreConversation(conversation.id);sidebarConversations=[restored,...sidebarConversations.filter(item=>item.id!==restored.id)];conversations=chatsForWorktree(sidebarConversations,selectedWorktree);await chooseConversation(restored);notify("Chat restored");}catch(error){notify(errorMessage(error),"error");throw error;}}
   function providerFor(conversation:Conversation){return providers.find(provider=>provider.id===conversation.provider);}
-  async function loadGenerationProfile(conversation:Conversation){return normalizeGenerationProfile(await api.getSetting(`conversation-generation:${conversation.id}`),providerFor(conversation)?.modes??[]);}
+  async function loadGenerationProfile(conversation:Conversation){return normalizeGenerationProfile(await api.getSetting(`conversation-generation:${conversation.id}`),providerFor(conversation)?.modes??[],conversation.provider);}
   function composerReferenceCategory():ReferenceCategory{return activeTab==="vfx"?"vfx":"other";}
   function referenceSlots(){const maximum=currentProvider?.capabilities.maximumReferenceImages??0;return maximum>0?Math.max(0,maximum-activeReferenceIds.length):0;}
   async function activateImportedReferences(created:ReferenceImage[]){
@@ -529,7 +529,7 @@
   async function changeConversationStyle(value:ConversationStyleId){if(!selectedConversation)return;conversationStyle=value;try{await api.setSetting(`conversation-style:${selectedConversation.id}`,value);notify(value==="inherit"?"Chat now follows the project art direction":`${stylePreset(value,customArts).name} applied to this chat`);}catch(error){notify(errorMessage(error),"error");}}
   async function saveCustomSkills(value:CustomSkill[]){customSkills=value;try{await api.setSetting("custom-skills",value);notify("Skills library saved");}catch(error){notify(errorMessage(error),"error");}}
   async function saveCustomArts(value:CustomArtStyle[]){customArts=value;try{await api.setSetting("custom-arts",value);notify("Arts library saved");}catch(error){notify(errorMessage(error),"error");}}
-  async function changeGenerationProfile(value:ChatGenerationProfile){if(!selectedConversation)return;generationProfile=normalizeGenerationProfile(value,currentProvider?.modes??[]);try{await api.setSetting(`conversation-generation:${selectedConversation.id}`,generationProfile);}catch(error){notify(errorMessage(error),"error");}}
+  async function changeGenerationProfile(value:ChatGenerationProfile){if(!selectedConversation)return;generationProfile=normalizeGenerationProfile(value,currentProvider?.modes??[],selectedConversation.provider);try{await api.setSetting(`conversation-generation:${selectedConversation.id}`,generationProfile);}catch(error){notify(errorMessage(error),"error");}}
   async function changeConversationProvider(providerId:string){
     if(!selectedConversation)return;
     if(runningRequests[selectedConversation.id]){notify("Stop this chat’s generation before switching providers","error");return;}
@@ -537,7 +537,7 @@
     try{
       const changed=await api.switchConversationProvider(selectedConversation.id,providerId);
       const nextProvider=providers.find(provider=>provider.id===providerId);
-      const nextProfile=normalizeGenerationProfile({...generationProfile,model:"",reasoningEffort:"",imageProviderId:providerId==="codex"?"imagegen":"provider-native"},nextProvider?.modes??[]);
+      const nextProfile=normalizeGenerationProfile({...generationProfile,model:"",reasoningEffort:"",imageProviderId:defaultImageProviderId(providerId)},nextProvider?.modes??[],providerId);
       selectedConversation=changed;
       conversations=conversations.map(item=>item.id===changed.id?changed:item);
       sidebarConversations=sidebarConversations.map(item=>item.id===changed.id?changed:item);
@@ -547,6 +547,7 @@
     }catch(error){notify(errorMessage(error),"error");}
   }
   async function refreshProviders(){try{providers=await api.detectProviders();notify("Provider detection refreshed");}catch(error){notify(errorMessage(error),"error");}}
+  async function installAgentProvider(providerId:string){try{const result=await api.installAgentProvider(providerId);providers=await api.detectProviders();notify(result.detail);}catch(error){notify(errorMessage(error),"error");throw error;}}
   async function changeDefaultProvider(provider:string){defaultProvider=provider;try{await api.setSetting("default-agent-provider",provider);notify(`${providers.find(item=>item.id===provider)?.name??provider} will be used for new chats`);}catch(error){notify(errorMessage(error),"error");}}
   async function saveImageProvider(input:ImageProviderInput){try{await api.saveImageProvider(input);providers=await api.detectProviders();notify(`${input.name} saved`);}catch(error){notify(errorMessage(error),"error");throw error;}}
   async function deleteImageProvider(id:string){try{await api.deleteImageProvider(id);providers=await api.detectProviders();notify("Custom provider removed");}catch(error){notify(errorMessage(error),"error");throw error;}}
@@ -641,7 +642,7 @@
 {/if}
 
 {#if projectDialogOpen}<ProjectDialog onCreated={acceptWorkspace} onClose={()=>projectDialogOpen=false} onError={(message)=>notify(message,"error")}/>{/if}
-{#if settingsOpen}<SettingsModal {providers} {defaultProvider} {theme} {workspaceStyle} customStyles={customArts} onDefaultProvider={changeDefaultProvider} onTheme={changeTheme} onWorkspaceStyle={changeWorkspaceStyle} onRefresh={refreshProviders} onSaveImageProvider={saveImageProvider} onDeleteImageProvider={deleteImageProvider} onTestImageProvider={testImageProvider} onClose={()=>settingsOpen=false}/>{/if}
+{#if settingsOpen}<SettingsModal {providers} {defaultProvider} {theme} {workspaceStyle} customStyles={customArts} onDefaultProvider={changeDefaultProvider} onTheme={changeTheme} onWorkspaceStyle={changeWorkspaceStyle} onRefresh={refreshProviders} onInstallAgentProvider={installAgentProvider} onSaveImageProvider={saveImageProvider} onDeleteImageProvider={deleteImageProvider} onTestImageProvider={testImageProvider} onClose={()=>settingsOpen=false}/>{/if}
 {#if worktreeDialog}<WorktreeDialog busy={creatingWorktree} onCreate={createWorktree} onClose={()=>worktreeDialog=false}/>{/if}
 {#if viewedAsset}<SpriteViewer asset={viewedAsset} onAnimate={animateViewedAsset} onDownload={exportAssetFromChat} onClose={()=>viewedAsset=undefined}/>{/if}
 {#if motionAsset}<MotionPromptDialog asset={motionAsset} onContinue={(motion,polishMode)=>prepareMotionInChat(motionAsset!,motion,polishMode)} onRig={()=>rigAsset(motionAsset!)} onClose={()=>motionAsset=undefined}/>{/if}

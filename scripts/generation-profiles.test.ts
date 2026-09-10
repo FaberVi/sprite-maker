@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GENERATION_PRESETS, normalizeGenerationProfile } from "../src/lib/generation-profiles";
+import { GENERATION_PRESETS, defaultImageProviderId, normalizeGenerationProfile } from "../src/lib/generation-profiles";
 
 describe("generation profile defaults", () => {
   test("uses a 128 by 128 mid-quality canvas by default", () => {
@@ -16,5 +16,13 @@ describe("generation profile defaults", () => {
     const custom = normalizeGenerationProfile({ profileVersion: 7, quality: "custom", width: 96, height: 80 });
     expect([custom.width, custom.height]).toEqual([96, 80]);
     expect(GENERATION_PRESETS.mid.width).toBe(128);
+  });
+
+  test("maps cursor chats to native cursor image generation", () => {
+    expect(defaultImageProviderId("cursor")).toBe("cursor-image");
+    expect(defaultImageProviderId("codex")).toBe("imagegen");
+    expect(defaultImageProviderId("claude")).toBe("provider-native");
+    expect(normalizeGenerationProfile({ imageProviderId: "imagegen" }, [], "cursor").imageProviderId).toBe("cursor-image");
+    expect(normalizeGenerationProfile({ imageProviderId: "grok-image" }, [], "cursor").imageProviderId).toBe("grok-image");
   });
 });

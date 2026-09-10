@@ -72,6 +72,7 @@ pub fn run() {
             conversations::list_messages,
             conversations::update_message_metadata,
             providers::detect_providers,
+            providers::install_agent_provider,
             providers::save_image_provider,
             providers::delete_image_provider,
             providers::test_image_provider,

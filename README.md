@@ -20,7 +20,7 @@ Generating one attractive image is easy. A production asset also needs a stable 
 
 Sprite Studio keeps that work in one desktop workspace. Describe an asset in chat, attach or paste references, inspect the result at pixel scale, generate a high-frame-count AI animation with strict identity and neighbor references, test the loop, and export a sheet without losing the source files or the conversation that produced them.
 
-The project is open source, local first, and built with Tauri, Svelte, Rust, SQLite, and an installed Codex CLI. It does not target Android or iOS.
+The project is open source, local first, and built with Tauri, Svelte, Rust, SQLite, and an installed Codex or Cursor CLI. It does not target Android or iOS.
 
 ## The workflow
 
@@ -176,7 +176,8 @@ VFX worktrees add their effect tools without removing the rest of the workbench.
 - [Bun](https://bun.sh/)
 - Stable [Rust](https://www.rust-lang.org/tools/install)
 - The native prerequisites required by Tauri 2 for your desktop operating system
-- An installed Codex CLI for live agent conversations and access to its reported models
+- An installed Codex CLI or Cursor CLI (`agent`) for live agent conversations and access to its reported models
+- Cursor 2.4 or later when using Cursor Image (native GenerateImage). Authenticate with `agent login` or `CURSOR_API_KEY`
 
 ### Run in development
 

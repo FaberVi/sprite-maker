@@ -3,7 +3,7 @@ use crate::{
     error::{CommandError, CommandResult},
     models::{
         GenerationOptions, ImageProviderInput, ProviderCapabilities, ProviderConnectionTest,
-        ProviderEvent, ProviderMode, ProviderRequestOptions, ProviderStatus,
+        ProviderEvent, ProviderInstallResult, ProviderMode, ProviderRequestOptions, ProviderStatus,
     },
     references,
     sprite_harness::studio_prompt,
@@ -31,22 +31,71 @@ use tokio::{
 };
 use uuid::Uuid;
 
+fn provider_home_dir() -> Option<PathBuf> {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+}
+
 pub(crate) fn find_executable(name: &str) -> Option<PathBuf> {
+    if name == "cursor" {
+        return find_named_executable("agent").or_else(|| find_named_executable("cursor-agent"));
+    }
+    find_named_executable(name)
+}
+
+fn find_named_executable(name: &str) -> Option<PathBuf> {
     let search_path = current_provider_environment_path();
     let current_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if let Ok(path) = which::which_in(name, Some(search_path), current_dir) {
-        return Some(path);
+    for lookup in executable_lookup_names(name) {
+        if let Ok(path) = which::which_in(&lookup, Some(search_path), &current_dir) {
+            return Some(path);
+        }
     }
-    let home = env::var_os("HOME").map(PathBuf::from);
-    let mut candidates = vec![
-        PathBuf::from("/opt/homebrew/bin").join(name),
-        PathBuf::from("/usr/local/bin").join(name),
-    ];
-    if let Some(home) = home {
-        candidates.push(home.join(".local/bin").join(name));
-        candidates.push(home.join(".codex/bin").join(name));
+    let home = provider_home_dir();
+    let mut candidates = Vec::new();
+    for lookup in executable_lookup_names(name) {
+        candidates.push(PathBuf::from("/opt/homebrew/bin").join(&lookup));
+        candidates.push(PathBuf::from("/usr/local/bin").join(&lookup));
+        if let Some(home) = home.as_ref() {
+            candidates.push(home.join(".local/bin").join(&lookup));
+            candidates.push(home.join(".codex/bin").join(&lookup));
+        }
+        #[cfg(windows)]
+        if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+            candidates.push(
+                PathBuf::from(local_app_data)
+                    .join("cursor-agent")
+                    .join(&lookup),
+            );
+        }
     }
     candidates.into_iter().find(|path| path.is_file())
+}
+
+pub(crate) fn executable_lookup_names(name: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        if let Some((stem, ext)) = name.rsplit_once('.') {
+            if ext.eq_ignore_ascii_case("exe") || ext.eq_ignore_ascii_case("cmd") {
+                return vec![name.to_string()];
+            }
+            return vec![
+                name.to_string(),
+                format!("{stem}.exe"),
+                format!("{stem}.cmd"),
+            ];
+        }
+        vec![
+            name.to_string(),
+            format!("{name}.exe"),
+            format!("{name}.cmd"),
+        ]
+    }
+    #[cfg(not(windows))]
+    {
+        vec![name.to_string()]
+    }
 }
 
 fn merge_provider_paths(
@@ -72,6 +121,13 @@ fn merge_provider_paths(
         let local_bin = home.join(".local/bin");
         if !entries.contains(&local_bin) {
             entries.push(local_bin);
+        }
+    }
+    #[cfg(windows)]
+    if let Some(local_app_data) = env::var_os("LOCALAPPDATA") {
+        let cursor_agent = PathBuf::from(local_app_data).join("cursor-agent");
+        if !entries.contains(&cursor_agent) {
+            entries.push(cursor_agent);
         }
     }
     env::join_paths(entries).unwrap_or_else(|_| inherited.unwrap_or_default().to_os_string())
@@ -229,7 +285,7 @@ pub(crate) fn current_provider_environment_path() -> &'static OsString {
     static PATH: OnceLock<OsString> = OnceLock::new();
     PATH.get_or_init(|| {
         let inherited = env::var_os("PATH");
-        let home = env::var_os("HOME").map(PathBuf::from);
+        let home = provider_home_dir();
         #[cfg(not(windows))]
         let shell = env::var_os("SHELL")
             .map(PathBuf::from)
@@ -364,6 +420,15 @@ fn provider_is_authenticated(id: &str, executable: &Path) -> bool {
             .and_then(|output| serde_json::from_slice::<serde_json::Value>(&output.stdout).ok())
             .and_then(|value| value.get("loggedIn").and_then(|value| value.as_bool()))
             .unwrap_or(false),
+        "cursor" => match command_output(executable, &["status", "--format", "json"]) {
+            Some(output)
+                if output.status.success()
+                    || serde_json::from_slice::<serde_json::Value>(&output.stdout).is_ok() =>
+            {
+                cursor_is_authenticated(&output)
+            }
+            _ => command_output(executable, &["status"]).is_some_and(|output| output.status.success()),
+        },
         // `models` is a read-only command which requires an authenticated Grok
         // session. It provides a stronger signal than checking credential files.
         "grok" => {
@@ -374,6 +439,74 @@ fn provider_is_authenticated(id: &str, executable: &Path) -> bool {
         "gemini" => true,
         _ => false,
     }
+}
+
+fn cursor_is_authenticated(output: &std::process::Output) -> bool {
+    if !output.status.success() {
+        return false;
+    }
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) else {
+        return true;
+    };
+    if let Some(logged_in) = value.get("loggedIn").and_then(|value| value.as_bool()) {
+        return logged_in;
+    }
+    if let Some(authenticated) = value
+        .get("authenticated")
+        .and_then(|value| value.as_bool())
+    {
+        return authenticated;
+    }
+    true
+}
+
+fn cursor_modes_from_output(output: &std::process::Output) -> Vec<ProviderMode> {
+    if !output.status.success() {
+        return Vec::new();
+    }
+    if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&output.stdout) {
+        let models = value
+            .as_array()
+            .or_else(|| value.get("models").and_then(|value| value.as_array()));
+        if let Some(models) = models {
+            return models
+                .iter()
+                .filter_map(|item| {
+                    if let Some(id) = item.as_str() {
+                        return (!id.is_empty()).then(|| ProviderMode {
+                            id: id.to_string(),
+                            label: id.to_string(),
+                            description: "Model reported by the installed Cursor CLI".into(),
+                            default_reasoning_effort: String::new(),
+                            reasoning_efforts: Vec::new(),
+                        });
+                    }
+                    let id = item
+                        .get("id")
+                        .or_else(|| item.get("slug"))
+                        .or_else(|| item.get("name"))
+                        .and_then(|value| value.as_str())?;
+                    if id.is_empty() {
+                        return None;
+                    }
+                    let label = item
+                        .get("displayName")
+                        .or_else(|| item.get("display_name"))
+                        .or_else(|| item.get("label"))
+                        .and_then(|value| value.as_str())
+                        .unwrap_or(id);
+                    Some(ProviderMode {
+                        id: id.to_string(),
+                        label: label.to_string(),
+                        description: "Model reported by the installed Cursor CLI".into(),
+                        default_reasoning_effort: String::new(),
+                        reasoning_efforts: Vec::new(),
+                    })
+                })
+                .collect();
+        }
+    }
+    grok_modes_from_output(output)
 }
 
 fn grok_modes_from_output(output: &std::process::Output) -> Vec<ProviderMode> {
@@ -465,7 +598,7 @@ fn stored_image_providers(state: &AppState) -> CommandResult<Vec<StoredImageProv
 }
 
 fn load_image_provider(state: &AppState, id: &str) -> CommandResult<Option<StoredImageProvider>> {
-    if id == "imagegen" {
+    if id == "imagegen" || id == "cursor-image" {
         return Ok(None);
     }
     let connection = state
@@ -484,6 +617,12 @@ fn load_image_provider(state: &AppState, id: &str) -> CommandResult<Option<Store
             .map_err(|error| CommandError::new("invalid_provider", error.to_string()))
     })
     .transpose()
+}
+
+pub(crate) fn is_provider_native_image(image_provider_id: &str, provider_id: &str) -> bool {
+    image_provider_id == "provider-native"
+        || (image_provider_id == "imagegen" && provider_id != "codex")
+        || (image_provider_id == "cursor-image" && provider_id != "cursor")
 }
 
 fn validate_provider_base_url(value: &str) -> CommandResult<String> {
@@ -520,6 +659,7 @@ fn provider_from_input(
     let provider_type = input.provider_type.trim().to_lowercase();
     if id.is_empty()
         || id == "imagegen"
+        || id == "cursor-image"
         || id == "midjourney"
         || !id
             .chars()
@@ -653,6 +793,91 @@ pub fn delete_image_provider(id: String, state: State<'_, AppState>) -> CommandR
     Ok(())
 }
 
+fn cursor_cli_install_command() -> StdCommand {
+    #[cfg(windows)]
+    {
+        let mut command = StdCommand::new("powershell");
+        command.args([
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "irm 'https://cursor.com/install?win32=true' | iex",
+        ]);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        let mut command = StdCommand::new("bash");
+        command.args(["-lc", "curl https://cursor.com/install -fsS | bash"]);
+        command
+    }
+}
+
+fn run_cursor_cli_install() -> CommandResult<String> {
+    let output = cursor_cli_install_command()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            CommandError::new(
+                "install_failed",
+                format!("Could not start the Cursor CLI installer: {error}"),
+            )
+        })?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let detail = [stderr, stdout]
+            .into_iter()
+            .filter(|chunk| !chunk.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(CommandError::new(
+            "install_failed",
+            if detail.is_empty() {
+                "Cursor CLI installation failed. Try running the installer manually from cursor.com.".into()
+            } else {
+                format!("Cursor CLI installation failed: {detail}")
+            },
+        ));
+    }
+    Ok(if find_executable("cursor").is_some() {
+        "Cursor CLI installed. Sign in with `agent login` when you are ready.".into()
+    } else {
+        "Cursor CLI installer finished. If Settings still shows it as missing, restart Sprite Studio and run Detect again.".into()
+    })
+}
+
+#[tauri::command]
+pub async fn install_agent_provider(provider_id: String) -> CommandResult<ProviderInstallResult> {
+    if provider_id != "cursor" {
+        return Err(CommandError::new(
+            "unsupported_provider",
+            "Sprite Studio can only install the Cursor CLI from Settings right now",
+        ));
+    }
+    if find_executable("cursor").is_some() {
+        return Ok(ProviderInstallResult {
+            detail: "Cursor CLI is already installed. Run Detect again if Settings still shows it as missing."
+                .into(),
+            installed: true,
+        });
+    }
+    let detail = tauri::async_runtime::spawn_blocking(run_cursor_cli_install)
+        .await
+        .map_err(|error| {
+            CommandError::new(
+                "install_failed",
+                format!("Cursor CLI installation was interrupted: {error}"),
+            )
+        })??;
+    Ok(ProviderInstallResult {
+        installed: find_executable("cursor").is_some(),
+        detail,
+    })
+}
+
 #[tauri::command]
 pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
     let mut providers: Vec<ProviderStatus> = [
@@ -660,6 +885,7 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
         ("claude", "Claude Code"),
         ("gemini", "Gemini CLI"),
         ("grok", "Grok CLI"),
+        ("cursor", "Cursor CLI"),
     ]
     .into_iter()
     .map(|(id, name)| {
@@ -684,6 +910,9 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
                 .as_ref()
                 .map(grok_modes_from_output)
                 .unwrap_or_default(),
+            ("cursor", Some(path), true) => command_output(path, &["models"])
+                .map(|output| cursor_modes_from_output(&output))
+                .unwrap_or_default(),
             _ => Vec::new(),
         };
         let (status, detail) = match (id, installed, authenticated) {
@@ -694,6 +923,9 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
                     "claude" => "Install Claude Code, then run `claude auth login`",
                     "gemini" => "Install @google/gemini-cli, run `gemini`, and complete authentication",
                     "grok" => "Install Grok Build, then run `grok login`",
+                    "cursor" => {
+                        "Press Install Cursor CLI below. After installation completes, run Detect again and sign in with `agent login`."
+                    }
                     _ => "Install and authenticate this provider's CLI",
                 },
             ),
@@ -711,6 +943,7 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
                     "codex" => "CLI detected, but `codex login status` did not confirm a session. Run `codex login`.",
                     "claude" => "CLI detected, but `claude auth status` reports signed out. Run `claude auth login`.",
                     "grok" => "CLI detected, but `grok models` could not verify a session. Run `grok login`.",
+                    "cursor" => "CLI detected, but `agent status` did not confirm a session. Run `agent login` or set CURSOR_API_KEY.",
                     _ => "CLI detected, but authentication could not be verified.",
                 },
             ),
@@ -720,6 +953,7 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
                     "codex" => "Installed, authenticated, and ready for workspace conversations.",
                     "claude" => "Installed and authenticated. Uses Claude Code's supported headless event stream.",
                     "grok" => "Installed and authenticated. Uses Grok Build's supported single-turn event stream.",
+                    "cursor" => "Installed and authenticated. Uses Cursor CLI's supported headless stream-json stream.",
                     _ => "Installed and ready.",
                 },
             ),
@@ -761,6 +995,29 @@ pub fn detect_providers(state: State<'_, AppState>) -> Vec<ProviderStatus> {
         detail: "Provided through the authenticated Codex workflow; no separate image API key is required.".into(),
         modes: Vec::new(),
         capabilities: provider_capabilities("codex"),
+        configurable: false,
+        has_api_key: false,
+        base_url: None,
+        model: None,
+    });
+    let cursor_ready = providers
+        .iter()
+        .any(|provider| provider.id == "cursor" && provider.status == "ready");
+    providers.push(ProviderStatus {
+        id: "cursor-image".into(),
+        name: "Cursor Image".into(),
+        kind: "image".into(),
+        installed: cursor_ready,
+        executable: None,
+        status: if cursor_ready {
+            "ready".into()
+        } else {
+            "needs_cursor".into()
+        },
+        detail: "Native image generation through the authenticated Cursor agent (GenerateImage)."
+            .into(),
+        modes: Vec::new(),
+        capabilities: provider_capabilities("cursor"),
         configurable: false,
         has_api_key: false,
         base_url: None,
@@ -813,7 +1070,7 @@ fn provider_capabilities(id: &str) -> ProviderCapabilities {
             image_to_image: true,
             maximum_reference_images: 5,
         },
-        "claude" | "gemini" | "grok" => ProviderCapabilities {
+        "claude" | "gemini" | "grok" | "cursor" => ProviderCapabilities {
             text_input: true,
             image_input: true,
             multiple_image_input: true,
@@ -936,6 +1193,7 @@ fn provider_display_name(id: &str) -> &'static str {
         "claude" => "Claude Code",
         "gemini" => "Gemini CLI",
         "grok" => "Grok CLI",
+        "cursor" => "Cursor CLI",
         _ => "Provider CLI",
     }
 }
@@ -946,6 +1204,7 @@ fn provider_auth_help(id: &str) -> String {
         "claude" => "Claude Code is installed but not authenticated. Run `claude auth login`, then retry.".into(),
         "gemini" => "Gemini CLI could not authenticate the headless request. Run `gemini` and complete its supported sign-in flow, then retry.".into(),
         "grok" => "Grok CLI is installed but not authenticated. Run `grok login`, then retry.".into(),
+        "cursor" => "Cursor CLI is installed but not authenticated. Run `agent login` or set CURSOR_API_KEY, then retry.".into(),
         _ => "The provider is not authenticated.".into(),
     }
 }
@@ -988,6 +1247,81 @@ fn append_stream_text(response: &mut String, provider_id: &str, text: &str) {
     response.push_str(text);
 }
 
+fn parse_cursor_line(
+    line: &str,
+    already_has_content: bool,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+        return (None, Some(line.to_string()), None);
+    };
+    let event_type = value
+        .get("type")
+        .and_then(|value| value.as_str())
+        .unwrap_or("activity");
+    let session_id = nested_string(
+        &value,
+        &[
+            &["session_id"],
+            &["sessionId"],
+            &["chat_id"],
+            &["chatId"],
+            &["session", "id"],
+        ],
+    );
+    if event_type == "system" {
+        let activity = (value.get("subtype").and_then(|value| value.as_str()) == Some("init"))
+            .then(|| "Cursor CLI session started".to_string());
+        return (None, activity, session_id);
+    }
+    if event_type == "assistant" {
+        let has_timestamp = value.get("timestamp_ms").is_some();
+        let has_model_call = value.get("model_call_id").is_some();
+        let text = if has_timestamp && !has_model_call {
+            message_text(&value)
+        } else {
+            None
+        };
+        return (text, None, session_id);
+    }
+    if event_type == "tool_call" {
+        return (None, cursor_tool_call_activity(&value), session_id);
+    }
+    if event_type == "result" {
+        let text = if already_has_content {
+            None
+        } else {
+            nested_string(&value, &[&["result"], &["response"], &["text"]])
+        };
+        return (text, None, session_id);
+    }
+    if matches!(event_type, "error" | "failed") {
+        return (
+            None,
+            nested_string(&value, &[&["error", "message"], &["message"]])
+                .or_else(|| Some("Provider reported an error".into())),
+            session_id,
+        );
+    }
+    (None, None, session_id)
+}
+
+fn cursor_tool_call_activity(value: &serde_json::Value) -> Option<String> {
+    let subtype = value
+        .get("subtype")
+        .and_then(|value| value.as_str())
+        .unwrap_or("started");
+    let tool_call = value.get("tool_call")?;
+    let object = tool_call.as_object()?;
+    let (name, tool) = object.iter().next()?;
+    let path = tool
+        .get("args")
+        .and_then(|args| args.get("path"))
+        .and_then(|value| value.as_str());
+    let function_name = nested_string(tool, &[&["function", "name"], &["name"]]);
+    let label = path.or(function_name.as_deref()).unwrap_or(name);
+    Some(format!("{name} {subtype}: {label}"))
+}
+
 pub(crate) fn parse_stream_line(
     provider_id: &str,
     line: &str,
@@ -995,6 +1329,9 @@ pub(crate) fn parse_stream_line(
 ) -> (Option<String>, Option<String>, Option<String>) {
     if provider_id == "codex" {
         return parse_codex_line(line);
+    }
+    if provider_id == "cursor" {
+        return parse_cursor_line(line, already_has_content);
     }
     let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
         return (None, Some(line.to_string()), None);
@@ -1113,7 +1450,7 @@ pub fn start_provider_message(
     let conversation = get_conversation(&state, &conversation_id)?;
     if !matches!(
         conversation.provider.as_str(),
-        "codex" | "claude" | "gemini" | "grok"
+        "codex" | "claude" | "gemini" | "grok" | "cursor"
     ) {
         return Err(CommandError::new(
             "provider_unsupported",
@@ -1160,8 +1497,8 @@ pub fn start_provider_message(
     // Chats created before the provider-native option inherited Codex's
     // `imagegen` setting. Keep those chats usable: non-Codex CLIs can work
     // directly, while Codex continues to use its existing ImageGen path.
-    let provider_native_image = image_provider_id == "provider-native"
-        || (image_provider_id == "imagegen" && provider_id != "codex");
+    // Cursor + cursor-image follows the same agent-native pattern.
+    let provider_native_image = is_provider_native_image(image_provider_id, &provider_id);
     if image_provider_id == "midjourney" {
         return Err(CommandError::new(
             "provider_unsupported",
@@ -1173,7 +1510,11 @@ pub fn start_provider_message(
     } else {
         load_image_provider(&state, image_provider_id)?
     };
-    if !provider_native_image && image_provider_id != "imagegen" && image_provider.is_none() {
+    if !provider_native_image
+        && image_provider_id != "imagegen"
+        && image_provider_id != "cursor-image"
+        && image_provider.is_none()
+    {
         return Err(CommandError::new(
             "provider_unavailable",
             "Configure the selected image provider in Settings before generating",
@@ -1213,6 +1554,7 @@ pub fn start_provider_message(
             (!combined_context.is_empty()).then_some(combined_context.as_str()),
             options.generation.as_ref(),
             options.command.as_deref(),
+            Some(provider_id.as_str()),
         ),
         model: options.model,
         reasoning_effort: options.reasoning_effort,
@@ -1693,7 +2035,7 @@ pub(crate) async fn run_agent_text_request(
     prompt: &str,
     image_paths: &[String],
 ) -> CommandResult<String> {
-    if !matches!(provider_id, "codex" | "claude" | "gemini" | "grok") {
+    if !matches!(provider_id, "codex" | "claude" | "gemini" | "grok" | "cursor") {
         return Err(CommandError::new(
             "provider_unsupported",
             "Choose an installed agent provider for this request",
@@ -1921,6 +2263,26 @@ pub(crate) fn provider_arguments(
             }
             arguments
         }
+        "cursor" => {
+            let mut arguments = vec![
+                "-p".into(),
+                "--output-format".into(),
+                "stream-json".into(),
+                "--stream-partial-output".into(),
+                "--force".into(),
+                "--trust".into(),
+            ];
+            if let Some(session_id) = session_id {
+                arguments.extend(["--resume".into(), session_id.into()]);
+            }
+            if let Some(model) = model {
+                arguments.extend(["--model".into(), model.into()]);
+            }
+            for path in reference_paths {
+                arguments.extend(["--image".into(), path.clone()]);
+            }
+            arguments
+        }
         _ => Vec::new(),
     }
 }
@@ -2057,11 +2419,12 @@ pub fn cancel_provider_request(
 #[cfg(test)]
 mod tests {
     use super::{
-        append_stream_text, codex_arguments, login_shell_path, login_shell_path_with_timeout,
-        merge_provider_paths, parse_codex_line, parse_stream_line, provider_arguments,
-        provider_environment_path, provider_failure_message, response_reports_generation_failure,
-        validate_provider_options,
+        append_stream_text, codex_arguments, cursor_cli_install_command, executable_lookup_names,
+        is_provider_native_image, merge_provider_paths, parse_codex_line, parse_stream_line, provider_arguments,
+        provider_failure_message, response_reports_generation_failure, validate_provider_options,
     };
+    #[cfg(unix)]
+    use super::{login_shell_path, login_shell_path_with_timeout, provider_environment_path};
     use crate::models::{GenerationOptions, ProviderRequestOptions};
     use std::{
         env,
@@ -2428,6 +2791,92 @@ mod tests {
         assert!(grok
             .windows(2)
             .any(|pair| pair == ["--output-format", "streaming-messages-json"]));
+
+        let cursor = provider_arguments(
+            "cursor",
+            Some("chat-123"),
+            Some("composer-2.5"),
+            None,
+            &["/tmp/master.png".into()],
+            None,
+        );
+        assert!(cursor.windows(2).any(|pair| pair == ["--output-format", "stream-json"]));
+        assert!(cursor.contains(&"-p".into()));
+        assert!(cursor.contains(&"--stream-partial-output".into()));
+        assert!(cursor.contains(&"--force".into()));
+        assert!(cursor.contains(&"--trust".into()));
+        assert!(cursor.windows(2).any(|pair| pair == ["--resume", "chat-123"]));
+        assert!(cursor.windows(2).any(|pair| pair == ["--model", "composer-2.5"]));
+        assert!(cursor.windows(2).any(|pair| pair == ["--image", "/tmp/master.png"]));
+    }
+
+    #[test]
+    fn parses_cursor_stream_json_deltas_and_skips_flushes() {
+        let delta = r#"{"type":"assistant","timestamp_ms":1,"message":{"content":[{"type":"text","text":"Hello"}]},"session_id":"chat-9"}"#;
+        let (content, _, session) = parse_stream_line("cursor", delta, false);
+        assert_eq!(content.as_deref(), Some("Hello"));
+        assert_eq!(session.as_deref(), Some("chat-9"));
+
+        let flush = r#"{"type":"assistant","model_call_id":"call-1","timestamp_ms":2,"message":{"content":[{"type":"text","text":"Hello"}]}}"#;
+        let (content, _, _) = parse_stream_line("cursor", flush, true);
+        assert!(content.is_none());
+
+        let tool = r#"{"type":"tool_call","subtype":"started","tool_call":{"writeToolCall":{"args":{"path":"assets/hero.png"}}}}"#;
+        let (_, activity, _) = parse_stream_line("cursor", tool, false);
+        assert!(activity.as_deref().is_some_and(|value| value.contains("writeToolCall")));
+        assert!(activity.as_deref().is_some_and(|value| value.contains("assets/hero.png")));
+
+        let init = r#"{"type":"system","subtype":"init","session_id":"chat-9"}"#;
+        let (_, activity, session) = parse_stream_line("cursor", init, false);
+        assert_eq!(activity.as_deref(), Some("Cursor CLI session started"));
+        assert_eq!(session.as_deref(), Some("chat-9"));
+    }
+
+    #[test]
+    fn cursor_image_stays_agent_native_only_for_cursor_chats() {
+        assert!(!is_provider_native_image("cursor-image", "cursor"));
+        assert!(is_provider_native_image("cursor-image", "claude"));
+        assert!(!is_provider_native_image("imagegen", "codex"));
+        assert!(is_provider_native_image("imagegen", "cursor"));
+        assert!(is_provider_native_image("provider-native", "cursor"));
+    }
+
+    #[test]
+    fn windows_lookup_names_include_exe_suffix() {
+        let names = executable_lookup_names("agent");
+        assert!(names.iter().any(|name| name == "agent"));
+        #[cfg(windows)]
+        {
+            assert!(names.iter().any(|name| name == "agent.exe"));
+            assert!(names.iter().any(|name| name == "agent.cmd"));
+        }
+        #[cfg(not(windows))]
+        assert!(!names.iter().any(|name| name.ends_with(".exe")));
+    }
+
+    #[test]
+    fn cursor_install_command_uses_official_installer() {
+        let command = cursor_cli_install_command();
+        #[cfg(windows)]
+        {
+            assert_eq!(command.get_program().to_string_lossy(), "powershell");
+            let script = command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(script.contains("cursor.com/install?win32=true"));
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(command.get_program().to_string_lossy(), "bash");
+            let script = command
+                .get_args()
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join(" ");
+            assert!(script.contains("cursor.com/install"));
+        }
     }
 
     #[test]

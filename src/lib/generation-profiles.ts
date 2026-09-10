@@ -20,11 +20,17 @@ const bounded = (value: unknown, fallback: number, minimum: number, maximum: num
   return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, Math.round(parsed))) : fallback;
 };
 
+export function defaultImageProviderId(agentProviderId: string): string {
+  if (agentProviderId === "codex") return "imagegen";
+  if (agentProviderId === "cursor") return "cursor-image";
+  return "provider-native";
+}
+
 export function profileForQuality(quality: Exclude<GenerationQuality, "custom">, current?: ChatGenerationProfile): ChatGenerationProfile {
   return { profileVersion: 8, quality, ...GENERATION_PRESETS[quality], frameMode: current?.frameMode ?? "auto", allowInterpolation: current?.allowInterpolation ?? true, allowAutoAdjust: current?.allowAutoAdjust ?? true, model: current?.model ?? "", reasoningEffort: current?.reasoningEffort ?? "", imageProviderId: current?.imageProviderId ?? "imagegen" };
 }
 
-export function normalizeGenerationProfile(value: unknown, modes: ProviderMode[] = []): ChatGenerationProfile {
+export function normalizeGenerationProfile(value: unknown, modes: ProviderMode[] = [], agentProviderId?: string): ChatGenerationProfile {
   const source = value && typeof value === "object" ? value as Partial<ChatGenerationProfile> : {};
   const quality: GenerationQuality = ["low", "mid", "high", "custom"].includes(String(source.quality)) ? source.quality as GenerationQuality : "mid";
   const base = quality === "custom" ? GENERATION_PRESETS.mid : GENERATION_PRESETS[quality];
@@ -38,6 +44,10 @@ export function normalizeGenerationProfile(value: unknown, modes: ProviderMode[]
   const frameMode = source.frameMode === "fixed" ? "fixed" : "auto";
   const minFrames = bounded(upgradeLegacyPreset ? base.minFrames : source.minFrames, base.minFrames, 1, 32);
   const maxFrames = bounded(upgradeLegacyPreset ? base.maxFrames : source.maxFrames, base.maxFrames, minFrames, 32);
+  let imageProviderId = String(source.imageProviderId ?? "imagegen");
+  if (agentProviderId === "cursor" && (imageProviderId === "imagegen" || imageProviderId === "")) {
+    imageProviderId = "cursor-image";
+  }
   return {
     profileVersion: 8,
     quality,
@@ -52,7 +62,7 @@ export function normalizeGenerationProfile(value: unknown, modes: ProviderMode[]
     allowAutoAdjust: frameMode === "auto" && (source.allowAutoAdjust ?? true),
     model,
     reasoningEffort,
-    imageProviderId: String(source.imageProviderId ?? "imagegen"),
+    imageProviderId,
   };
 }
 

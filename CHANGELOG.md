@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Community providers
+
+- Added a Cursor CLI adapter for chat, with native Cursor Image generation through GenerateImage when Cursor 2.4 or later is authenticated (`agent login` or `CURSOR_API_KEY`).
+
 ## 0.3.2 — 2026-08-19
 
 ### Animation reliability

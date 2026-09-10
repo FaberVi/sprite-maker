@@ -17,8 +17,10 @@
   const qualityLabel = $derived(profile.quality === "mid" ? "Mid" : profile.quality[0].toUpperCase() + profile.quality.slice(1));
   const frameLabel = $derived(profile.frameMode === "auto" ? `Auto ${profile.minFrames}–${profile.maxFrames}f` : `${profile.frames}f`);
 
+  const nativeImageProvider = $derived(provider?.id === "codex" || provider?.id === "cursor");
+
   function commit(value: ChatGenerationProfile) {
-    return onChange(normalizeGenerationProfile(value, provider?.modes ?? []));
+    return onChange(normalizeGenerationProfile(value, provider?.modes ?? [], provider?.id));
   }
 
   function chooseQuality(quality: GenerationQuality) {
@@ -96,10 +98,10 @@
       {/if}
       <div class="image-source-heading"><strong>Animation image provider</strong><span>Generates the master and every animation frame</span></div>
       <div class="fields"><label>Image API<select value={profile.imageProviderId} onchange={(event)=>commit({...profile,imageProviderId:event.currentTarget.value})}>
-        {#if provider?.id !== "codex"}<option value="provider-native">Chat only — no image API</option>{/if}
-        {#each imageProviders.filter(item=>item.status==="ready" && (item.id!=="imagegen" || provider?.id==="codex")) as imageProvider}<option value={imageProvider.id}>{imageProvider.name}</option>{/each}
+        {#if !nativeImageProvider}<option value="provider-native">Chat only — no image API</option>{/if}
+        {#each imageProviders.filter(item=>item.status==="ready" && (item.id!=="imagegen" || provider?.id==="codex") && (item.id!=="cursor-image" || provider?.id==="cursor")) as imageProvider}<option value={imageProvider.id}>{imageProvider.name}</option>{/each}
       </select></label></div>
-      {#if provider?.id !== "codex" && (profile.imageProviderId === "provider-native" || profile.imageProviderId === "imagegen")}<p class="mode-description">This sends a chat-only request. To create a source image, choose Grok Image, Gemini Image, or another configured image API.</p>{/if}
+      {#if !nativeImageProvider && (profile.imageProviderId === "provider-native" || profile.imageProviderId === "imagegen")}<p class="mode-description">This sends a chat-only request. To create a source image, choose Grok Image, Gemini Image, or another configured image API.</p>{/if}
     </div>
     {#if showHelp}
       <div class="help-backdrop" role="presentation" onclick={(event)=>event.target===event.currentTarget&&(showHelp=false)}>
