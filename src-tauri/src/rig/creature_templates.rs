@@ -1,0 +1,335 @@
+use super::types::{TemplateBone, TemplatePoint};
+
+pub(super) static QUADRUPED_POINTS: &[TemplatePoint] = &[
+    TemplatePoint {
+        name: "nose",
+        kind: "anchor",
+        nx: 0.05,
+        ny: 0.40,
+    },
+    TemplatePoint {
+        name: "head",
+        kind: "joint",
+        nx: 0.14,
+        ny: 0.42,
+    },
+    TemplatePoint {
+        name: "neck_base",
+        kind: "joint",
+        nx: 0.27,
+        ny: 0.38,
+    },
+    TemplatePoint {
+        name: "shoulder",
+        kind: "joint",
+        nx: 0.33,
+        ny: 0.58,
+    },
+    TemplatePoint {
+        name: "front_knee",
+        kind: "joint",
+        nx: 0.31,
+        ny: 0.72,
+    },
+    TemplatePoint {
+        name: "front_paw",
+        kind: "contact",
+        nx: 0.30,
+        ny: 0.94,
+    },
+    TemplatePoint {
+        name: "pelvis",
+        kind: "joint",
+        nx: 0.66,
+        ny: 0.48,
+    },
+    TemplatePoint {
+        name: "hip",
+        kind: "joint",
+        nx: 0.68,
+        ny: 0.58,
+    },
+    TemplatePoint {
+        name: "hind_knee",
+        kind: "joint",
+        nx: 0.71,
+        ny: 0.68,
+    },
+    TemplatePoint {
+        name: "hind_paw",
+        kind: "contact",
+        nx: 0.69,
+        ny: 0.94,
+    },
+    TemplatePoint {
+        name: "tail_base",
+        kind: "joint",
+        nx: 0.84,
+        ny: 0.42,
+    },
+    TemplatePoint {
+        name: "tail_tip",
+        kind: "anchor",
+        nx: 0.96,
+        ny: 0.34,
+    },
+];
+
+pub(super) static QUADRUPED_BONES: &[TemplateBone] = &[
+    TemplateBone {
+        name: "body",
+        start: "neck_base",
+        end: "pelvis",
+        radius_factor: 1.5,
+        parent: None,
+        z: 5,
+    },
+    TemplateBone {
+        name: "head",
+        start: "neck_base",
+        end: "head",
+        radius_factor: 1.1,
+        parent: Some("body"),
+        z: 7,
+    },
+    TemplateBone {
+        name: "muzzle",
+        start: "head",
+        end: "nose",
+        radius_factor: 0.7,
+        parent: Some("head"),
+        z: 7,
+    },
+    TemplateBone {
+        name: "front_leg",
+        start: "shoulder",
+        end: "front_knee",
+        radius_factor: 0.8,
+        parent: Some("body"),
+        z: 9,
+    },
+    TemplateBone {
+        name: "front_pastern",
+        start: "front_knee",
+        end: "front_paw",
+        radius_factor: 0.6,
+        parent: Some("front_leg"),
+        z: 9,
+    },
+    TemplateBone {
+        name: "hind_leg",
+        start: "hip",
+        end: "hind_knee",
+        radius_factor: 0.8,
+        parent: Some("body"),
+        z: 9,
+    },
+    TemplateBone {
+        name: "hind_pastern",
+        start: "hind_knee",
+        end: "hind_paw",
+        radius_factor: 0.6,
+        parent: Some("hind_leg"),
+        z: 9,
+    },
+    TemplateBone {
+        name: "tail",
+        start: "tail_base",
+        end: "tail_tip",
+        radius_factor: 0.6,
+        parent: Some("body"),
+        z: 3,
+    },
+];
+
+pub(super) static WINGED_POINTS: &[TemplatePoint] = &[
+    TemplatePoint {
+        name: "head_top",
+        kind: "anchor",
+        nx: 0.5,
+        ny: 0.06,
+    },
+    TemplatePoint {
+        name: "neck",
+        kind: "joint",
+        nx: 0.5,
+        ny: 0.18,
+    },
+    TemplatePoint {
+        name: "wing_root_l",
+        kind: "joint",
+        nx: 0.38,
+        ny: 0.28,
+    },
+    TemplatePoint {
+        name: "wing_tip_l",
+        kind: "anchor",
+        nx: 0.12,
+        ny: 0.20,
+    },
+    TemplatePoint {
+        name: "wing_root_r",
+        kind: "joint",
+        nx: 0.62,
+        ny: 0.28,
+    },
+    TemplatePoint {
+        name: "wing_tip_r",
+        kind: "anchor",
+        nx: 0.88,
+        ny: 0.20,
+    },
+    TemplatePoint {
+        name: "tail_base",
+        kind: "joint",
+        nx: 0.5,
+        ny: 0.60,
+    },
+    TemplatePoint {
+        name: "tail_tip",
+        kind: "anchor",
+        nx: 0.5,
+        ny: 0.86,
+    },
+    TemplatePoint {
+        name: "foot_l",
+        kind: "contact",
+        nx: 0.42,
+        ny: 0.72,
+    },
+    TemplatePoint {
+        name: "foot_r",
+        kind: "contact",
+        nx: 0.58,
+        ny: 0.72,
+    },
+];
+
+pub(super) static WINGED_BONES: &[TemplateBone] = &[
+    TemplateBone {
+        name: "body",
+        start: "neck",
+        end: "tail_base",
+        radius_factor: 1.4,
+        parent: None,
+        z: 5,
+    },
+    TemplateBone {
+        name: "head",
+        start: "neck",
+        end: "head_top",
+        radius_factor: 1.1,
+        parent: Some("body"),
+        z: 7,
+    },
+    TemplateBone {
+        name: "wing_l",
+        start: "wing_root_l",
+        end: "wing_tip_l",
+        radius_factor: 0.9,
+        parent: Some("body"),
+        z: 2,
+    },
+    TemplateBone {
+        name: "wing_r",
+        start: "wing_root_r",
+        end: "wing_tip_r",
+        radius_factor: 0.9,
+        parent: Some("body"),
+        z: 9,
+    },
+    TemplateBone {
+        name: "tail",
+        start: "tail_base",
+        end: "tail_tip",
+        radius_factor: 0.7,
+        parent: Some("body"),
+        z: 3,
+    },
+];
+
+pub(super) static SERPENTINE_POINTS: &[TemplatePoint] = &[
+    TemplatePoint {
+        name: "snout",
+        kind: "anchor",
+        nx: 0.06,
+        ny: 0.46,
+    },
+    TemplatePoint {
+        name: "head",
+        kind: "joint",
+        nx: 0.16,
+        ny: 0.48,
+    },
+    TemplatePoint {
+        name: "neck",
+        kind: "joint",
+        nx: 0.28,
+        ny: 0.42,
+    },
+    TemplatePoint {
+        name: "spine_a",
+        kind: "joint",
+        nx: 0.42,
+        ny: 0.50,
+    },
+    TemplatePoint {
+        name: "spine_b",
+        kind: "joint",
+        nx: 0.56,
+        ny: 0.56,
+    },
+    TemplatePoint {
+        name: "spine_c",
+        kind: "joint",
+        nx: 0.70,
+        ny: 0.54,
+    },
+    TemplatePoint {
+        name: "spine_d",
+        kind: "joint",
+        nx: 0.82,
+        ny: 0.50,
+    },
+    TemplatePoint {
+        name: "tail_tip",
+        kind: "anchor",
+        nx: 0.95,
+        ny: 0.48,
+    },
+];
+
+pub(super) static SERPENTINE_BONES: &[TemplateBone] = &[
+    TemplateBone {
+        name: "head",
+        start: "snout",
+        end: "neck",
+        radius_factor: 1.0,
+        parent: None,
+        z: 6,
+    },
+    TemplateBone {
+        name: "segment_a",
+        start: "neck",
+        end: "spine_b",
+        radius_factor: 1.1,
+        parent: Some("head"),
+        z: 5,
+    },
+    TemplateBone {
+        name: "segment_b",
+        start: "spine_b",
+        end: "spine_d",
+        radius_factor: 1.0,
+        parent: Some("segment_a"),
+        z: 5,
+    },
+    TemplateBone {
+        name: "tail",
+        start: "spine_d",
+        end: "tail_tip",
+        radius_factor: 0.6,
+        parent: Some("segment_b"),
+        z: 5,
+    },
+];

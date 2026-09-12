@@ -23,6 +23,7 @@ const bounded = (value: unknown, fallback: number, minimum: number, maximum: num
 export function defaultImageProviderId(agentProviderId: string): string {
   if (agentProviderId === "codex") return "imagegen";
   if (agentProviderId === "cursor") return "cursor-image";
+  if (agentProviderId === "antigravity") return "antigravity-image";
   return "provider-native";
 }
 
@@ -47,6 +48,9 @@ export function normalizeGenerationProfile(value: unknown, modes: ProviderMode[]
   let imageProviderId = String(source.imageProviderId ?? "imagegen");
   if (agentProviderId === "cursor" && (imageProviderId === "imagegen" || imageProviderId === "")) {
     imageProviderId = "cursor-image";
+  }
+  if (agentProviderId === "antigravity" && (imageProviderId === "imagegen" || imageProviderId === "")) {
+    imageProviderId = "antigravity-image";
   }
   return {
     profileVersion: 8,

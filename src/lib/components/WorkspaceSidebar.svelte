@@ -3,6 +3,7 @@
   import ConversationRenameDialog from "$lib/components/ConversationRenameDialog.svelte";
   import WorktreeExplorer from "$lib/components/WorktreeExplorer.svelte";
   import type { Conversation, Workspace, Worktree } from "$lib/types";
+  import { displayPath } from "$lib/display-path";
 
   let { workspace, worktrees, selectedWorktreeId, conversations, selectedConversationId, runningConversationIds, onWorktree, onNewWorktree, onConversation, onNewConversation, onRenameConversation, onArchiveConversation, onSettings, onHome, onCollapse }: {
     workspace: Workspace; worktrees: Worktree[]; selectedWorktreeId?: string; conversations: Conversation[]; selectedConversationId?: string; runningConversationIds: string[];
@@ -27,7 +28,7 @@
   <div class="workspace-switcher">
     <button class="workspace-button" onclick={onHome} title="Change workspace">
       <span class="workspace-mark">{workspace.name.slice(0, 1).toUpperCase()}</span>
-      <span><strong>{workspace.name}</strong><small>{workspace.path}</small></span><ChevronsUpDown size={14}/>
+      <span><strong>{workspace.name}</strong><small>{displayPath(workspace.path)}</small></span><ChevronsUpDown size={14}/>
     </button>
     <button class="icon-button" onclick={onCollapse} title="Collapse sidebar" aria-label="Collapse sidebar"><PanelLeftClose size={16}/></button>
   </div>

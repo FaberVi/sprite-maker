@@ -1,9 +1,9 @@
 <script lang="ts">
   import { AlertTriangle, Check, ChevronRight, Eye, Sparkles, ShieldCheck, X } from "lucide-svelte";
   import type { BackgroundJob, QualityCheck, QualityReport } from "$lib/types";
-  let { report, job, canOptimize=false, optimizing=false, onAnalyze, onOptimize, onFrame, onIgnore, onRepair, onClose }: {
+  let { report, job, canOptimize=false, optimizing=false, repairing=false, onAnalyze, onOptimize, onFrame, onIgnore, onRepair, onClose }: {
     report?:QualityReport;job?:BackgroundJob;onAnalyze:()=>void;onFrame:(index:number)=>void;
-    canOptimize?:boolean;optimizing?:boolean;onOptimize:()=>void;onIgnore:(check:QualityCheck)=>void;onRepair:(check:QualityCheck)=>void;onClose:()=>void;
+    canOptimize?:boolean;optimizing?:boolean;repairing?:boolean;onOptimize:()=>void;onIgnore:(check:QualityCheck)=>void;onRepair:(check:QualityCheck)=>void;onClose:()=>void;
   }=$props();
   const categories=$derived(report?[
     {label:"Character",score:report.characterConsistencyScore},{label:"Motion",score:report.motionContinuityScore},{label:"Alignment",score:report.frameAlignmentScore},
@@ -18,9 +18,9 @@
   {:else if report&&report.status==="completed"}
     <div class="score" class:good={report.overallScore>=85} class:warning={report.overallScore>=65&&report.overallScore<85} class:error={report.overallScore<65}><strong>{Math.round(report.overallScore)}</strong><span>/ 100</span><p>Native diagnostic score</p></div>
     <div class="categories">{#each categories as category}<div><span>{category.label}</span><i><b class={scoreTone(category.score)} style={`width:${category.score}%`}></b></i><strong>{Math.round(category.score)}</strong></div>{/each}</div>
-    {#if canOptimize||report.motionContinuityScore<85}<div class="repair-bar"><button disabled={optimizing} onclick={onOptimize}><Sparkles size={12}/><span><strong>{optimizing?"Repairing loop…":"Repair weak frames"}</strong><small>Keeps the original and preserves a fixed frame budget</small></span></button></div>{/if}
+    {#if canOptimize||report.motionContinuityScore<85}<div class="repair-bar"><button disabled={optimizing||repairing} onclick={onOptimize}><Sparkles size={12}/><span><strong>{optimizing?"Repairing loop…":"Repair weak frames"}</strong><small>Keeps the original and preserves a fixed frame budget</small></span></button></div>{/if}
     <div class="warnings-head"><strong>{warnings.length} active warning{warnings.length===1?"":"s"}</strong><span><button onclick={onAnalyze}>Analyze again</button></span></div>
-    <div class="checks">{#each report.checks as check}{#if !check.ignored}<article class:error={check.severity==="error"} class:info={check.severity==="info"}><span class="icon">{#if check.severity==="info"}<Check size={12}/>{:else}<AlertTriangle size={12}/>{/if}</span><div><strong>{check.message}</strong>{#if check.metricValue!==undefined}<small>{Number(check.metricValue).toFixed(1)} {check.metricUnit??""}</small>{/if}<footer>{#if check.frameIndex!==undefined}<button onclick={()=>onFrame(check.frameIndex!)}><Eye size={10}/>Frame {check.frameIndex+1}</button>{/if}{#if check.repairAction}<button class="repair" onclick={()=>onRepair(check)}><ShieldCheck size={10}/>Repair</button>{/if}{#if check.severity!=="info"}<button onclick={()=>onIgnore(check)}>Ignore</button>{/if}</footer></div><ChevronRight size={11}/></article>{/if}{/each}</div>
+    <div class="checks">{#each report.checks as check}{#if !check.ignored}<article class:error={check.severity==="error"} class:info={check.severity==="info"}><span class="icon">{#if check.severity==="info"}<Check size={12}/>{:else}<AlertTriangle size={12}/>{/if}</span><div><strong>{check.message}</strong>{#if check.metricValue!==undefined}<small>{Number(check.metricValue).toFixed(1)} {check.metricUnit??""}</small>{/if}<footer>{#if check.frameIndex!==undefined}<button onclick={()=>onFrame(check.frameIndex!)}><Eye size={10}/>Frame {check.frameIndex+1}</button>{/if}{#if check.repairAction}<button class="repair" disabled={repairing||optimizing} onclick={()=>onRepair(check)}><ShieldCheck size={10}/>Repair</button>{/if}{#if check.severity!=="info"}<button onclick={()=>onIgnore(check)}>Ignore</button>{/if}</footer></div><ChevronRight size={11}/></article>{/if}{/each}</div>
     <p class="caveat">Deterministic metrics are diagnostic aids, not artistic truth. Inspect playback before accepting or repairing frames.</p>
   {:else}<div class="empty"><ShieldCheck size={26}/><strong>Analyze this animation</strong><p>Check alpha, bounds, drift, duplicates, sudden changes, palette stability, and loop continuity.</p><button onclick={onAnalyze}>Run quality analysis</button></div>{/if}
 </aside>

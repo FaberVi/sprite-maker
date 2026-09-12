@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Animation, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, Conversation, ExportResult, FrameOptimizationResult, GenerationManifest, ImageProviderInput, Message, MotionPlan, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, QualityReport, ReferenceCategory, ReferenceImage, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SidebarSnapshot, SpriteSheet, SpriteSheetInput, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind } from "$lib/types";
+import type { Animation, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, Conversation, ExportResult, FrameOptimizationResult, GenerationManifest, ImageProviderInput, Message, MotionPlan, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, QualityReport, ReferenceCategory, ReferenceImage, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SidebarSnapshot, SpriteSheet, SpriteSheetInput, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind, WorkspaceRigSpec } from "$lib/types";
 
 export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
@@ -28,9 +28,14 @@ export const api = {
   restoreConversation: (id: string) => invoke<Conversation>("restore_conversation", { id }),
   deleteConversation: (id: string) => invoke<void>("delete_conversation", { id }),
   listMessages: (conversationId: string) => invoke<Message[]>("list_messages", { conversationId }),
+  recordChatTurn: (conversationId: string, userContent: string, assistantContent: string) =>
+    invoke<Message[]>("record_chat_turn", { conversationId, userContent, assistantContent }),
+  recordChatAssistant: (conversationId: string, assistantContent: string) =>
+    invoke<Message[]>("record_chat_assistant", { conversationId, assistantContent }),
   updateMessageMetadata: (id: string, metadata: Record<string, unknown>) => invoke<void>("update_message_metadata", { id, metadata }),
   detectProviders: () => invoke<ProviderStatus[]>("detect_providers"),
   installAgentProvider: (providerId: string) => invoke<ProviderInstallResult>("install_agent_provider", { providerId }),
+  authenticateAgentProvider: (providerId: string) => invoke<ProviderInstallResult>("authenticate_agent_provider", { providerId }),
   saveImageProvider: (input: ImageProviderInput) => invoke<ProviderStatus>("save_image_provider", { input }),
   deleteImageProvider: (id: string) => invoke<void>("delete_image_provider", { id }),
   testImageProvider: (input: ImageProviderInput) => invoke<ProviderConnectionTest>("test_image_provider", { input }),
@@ -41,6 +46,7 @@ export const api = {
   listAssets: (workspaceId: string) => invoke<Asset[]>("list_assets", { workspaceId }),
   getGenerationManifest: (workspaceId: string) => invoke<GenerationManifest | null>("get_generation_manifest", { workspaceId }),
   getGenerationFingerprint: (workspaceId: string) => invoke<string | null>("get_generation_fingerprint", { workspaceId }),
+  listWorkspaceRigSpecs: (workspaceId: string) => invoke<WorkspaceRigSpec[]>("list_workspace_rig_specs", { workspaceId }),
   scanGenerationAssets: (workspaceId: string) => invoke<Asset[]>("scan_generation_assets", { workspaceId }),
   listAssetPacks: (workspaceId: string) => invoke<AssetPack[]>("list_asset_packs", { workspaceId }),
   importAsset: (workspaceId: string, sourcePath: string, category: string) => invoke<Asset>("import_asset", { workspaceId, sourcePath, category }),
@@ -72,6 +78,13 @@ export const api = {
   acknowledgeQualityCheck: (checkId: string, ignored = false) => invoke<void>("acknowledge_quality_check", { checkId, ignored }),
   optimizeAnimationFrames: (animationId: string, maxChanges = 3) => invoke<FrameOptimizationResult>("optimize_animation_frames", { input: { animationId, maxChanges } }),
   repairAnimationAlignment: (animationId: string) => invoke<Animation>("repair_animation_alignment", { animationId }),
+  repairAnimationTransparency: (animationId: string) => invoke<Animation>("repair_animation_transparency", { animationId }),
+  runSpritePolish: (workspaceId: string, master: string, rough: string, input: string, output: string) =>
+    invoke<Record<string, unknown>>("run_sprite_polish", { workspaceId, master, rough, input, output }),
+  archiveSpritePaths: (workspaceId: string, paths: string[], label: string) =>
+    invoke<string[]>("archive_sprite_paths", { workspaceId, paths, label }),
+  restoreSpritePaths: (workspaceId: string, backupPaths: string[], targetPaths: string[]) =>
+    invoke<void>("restore_sprite_paths", { workspaceId, backupPaths, targetPaths }),
   listRigs: (workspaceId: string, worktreeId?: string) => invoke<Rig[]>("list_rigs", { workspaceId, worktreeId: worktreeId ?? null }),
   saveRig: (input: RigInput) => invoke<Rig>("save_rig", { input }),
   deleteRig: (id: string) => invoke<void>("delete_rig", { id }),

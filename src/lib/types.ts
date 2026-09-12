@@ -26,11 +26,38 @@ export type GenerationQuality = "low" | "mid" | "high" | "custom";
 export type FrameMode = "fixed" | "auto";
 export type ChatGenerationProfile = { profileVersion: number; quality: GenerationQuality; width: number; height: number; frames: number; fps: number; frameMode: FrameMode; minFrames: number; maxFrames: number; allowInterpolation: boolean; allowAutoAdjust: boolean; model: string; reasoningEffort: string; imageProviderId: string };
 export type SpriteSlashCommand = "animate" | "sprite" | "character" | "effect" | "pack" | "rig";
-export type ProviderRequestOptions = { model?: string; reasoningEffort?: string; command?: SpriteSlashCommand; generation: Pick<ChatGenerationProfile, "quality" | "width" | "height" | "frames" | "fps" | "frameMode" | "minFrames" | "maxFrames" | "allowInterpolation" | "allowAutoAdjust">; referenceIds?: string[]; imageProviderId?: string };
+export type ProviderRequestOptions = {
+  model?: string;
+  reasoningEffort?: string;
+  command?: SpriteSlashCommand;
+  generation: Pick<ChatGenerationProfile, "quality" | "width" | "height" | "frames" | "fps" | "frameMode" | "minFrames" | "maxFrames" | "allowInterpolation" | "allowAutoAdjust">;
+  referenceIds?: string[];
+  imageProviderId?: string;
+  nativeRigMasterOnly?: boolean;
+};
 export type MotionPhase = { name: string; description: string; frameCount: number; timingWeight: number };
 export type MotionPlan = { frameMode: FrameMode; selectedFrameCount: number; minimumFrameCount: number; maximumFrameCount: number; fps: number; looping: boolean; allowInterpolation: boolean; allowAutoAdjust: boolean; explanation: string; phases: MotionPhase[] };
 export type ProviderEvent = { requestId: string; conversationId: string; eventType: "started" | "content" | "activity" | "completed" | "failed" | "cancelled"; content: string };
-export type GenerationManifest = { kind?: "sprite" | "pack"; name: string; category: string; fps: number; files: string[]; generatedAt: string };
+export type GenerationManifest = {
+  kind?: "sprite" | "pack";
+  name: string;
+  category: string;
+  fps: number;
+  files: string[];
+  generatedAt: string;
+  rig?: string;
+  rigId?: string;
+  source?: string;
+  quality?: Record<string, unknown>;
+};
+export type WorkspaceRigSpec = {
+  relativePath: string;
+  name: string;
+  source?: string;
+  fps: number;
+  frameCount: number;
+  updatedAt: string;
+};
 export type AnimationPolishMode = "rig" | "ai-polish" | "full-redraw";
 export type SpriteGenerationMetadata = { kind: "sprite-generation"; name: string; category: string; fps: number; assetIds: string[]; animationId?: string };
 export type PackGenerationMetadata = { kind: "pack-generation"; packId: string };
@@ -69,7 +96,7 @@ export type RigInput = Omit<Rig, "id" | "createdAt" | "updatedAt"> & { id?: stri
 export type RigSuggestion = { morphology: RigMorphology; points: RigPoint[]; bones: RigBone[]; frames: RigFrame[]; reasoning: string; source: RigPointSource };
 export type MorphologyScore = { morphology: RigMorphology; confidence: number; reasoning: string };
 export type RigFitReport = { detections: MorphologyScore[]; recommended: RigSuggestion; capsuleFit: number; warnings: string[] };
-export type RigRenderResult = { animation: Animation; framePaths: string[]; assetIds: string[] };
+export type RigRenderResult = { animation: Animation; framePaths: string[]; assetIds: string[]; rigId: string };
 
 export const RIG_MORPHOLOGIES: { id: RigMorphology; label: string }[] = [
   { id: "biped", label: "Biped (humanoid)" },

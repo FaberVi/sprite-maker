@@ -16,6 +16,14 @@ Use these only when the user did not specify production dimensions. Treat named 
 | SNES-era action RPG | 24×32 character | 4-frame idle | 10 | three-quarter/front |
 | compact roguelike | 16×16 character | 2-frame idle | 6 | top-down/front hybrid |
 | pixel platformer | 32×32 character | 6-frame run-ready set | 12 | side view |
+| NES 8-bit | 32×32 character or object | 1 static sprite or motion-ready set | 8 | user-specified |
+| Dark fantasy pixel | 48×64 character | 4-frame idle/walk-ready set | 8 | front or user-specified |
+| Paper cutout | 128×160 character | 4-frame idle set | 8 | front or three-quarter |
+| Watercolor | 192×192 object or creature | 1 static sprite | 1 | three-quarter |
+| Comic ink | 128×128 object or character | 1 static sprite or 6-frame action set | 10 | side or three-quarter |
+| Neon synth | 128×128 object or character | 1 static sprite or 6-frame action set | 10 | side or three-quarter |
+| Clay | 128×128 object or character | 1 static sprite or 6-frame action set | 10 | side or three-quarter |
+| Voxel | 64×64 object or creature | 1 static sprite | 1 | isometric three-quarter |
 | fighting or large action character | 64×64 character | 6-frame idle/action set | 12 | side view |
 | inventory icon, item, prop | 24×24 prop | 1 frame | 1 | three-quarter icon |
 | UI icon, tiny pickup | 16×16 prop | 1 frame | 1 | centered icon |
@@ -39,4 +47,15 @@ Use these only when the user did not specify production dimensions. Treat named 
 - “Stardew-like” means cozy farming-RPG proportions, warm readable colors, compact pixel clusters, and an original outfit and face. Use the Pixel RPG preset; never reproduce an existing farmer sprite.
 - “Pokemon-like” means compact top-down readability, strong color blocking, and an original silhouette; never reproduce an existing creature or trainer.
 - “Zelda-like” means readable top-down adventure proportions and iconic equipment shapes; never reproduce Link or franchise symbols.
+- “SNES action RPG” means taller 24×32 hero proportions, chunky 16-bit clusters, and a three-quarter idle stance; keep the palette warm and restrained.
+- “Roguelike tiny” means a high-contrast 16×16 silhouette with hybrid top-down/front facing; prioritize readability over detail.
+- “Platformer pixel” means a side-view run-ready silhouette with grounded feet and a clear jump pose at about 32×32.
+- “NES 8-bit” means a tight four-color ramp, chunky blocks, and no antialiasing or soft gradients.
+- “Dark fantasy pixel” keeps Pixel RPG’s 48×64 scale but uses a muted grim ramp (ash, rust, deep greens) with restrained highlights.
+- “Paper cutout” means stacked colored paper layers with visible edge thickness and a soft drop shadow, not painted shading.
+- “Watercolor” means pigment blooms, paper grain, and controlled wet edges while keeping a readable gameplay silhouette.
+- “Comic ink” means bold contours, flat fills, and sparse hatching like a graphic print.
+- “Neon synth” means magenta/cyan glow on a dark ground with a night-readable silhouette.
+- “Clay” means soft sculpted stop-motion volumes, fingerprint texture, and studio lighting.
+- “Voxel” means hard cubic volumes in an isometric three-quarter view with limited face colors.
 - When the user names any living artist, studio, or game, describe the transferable traits and create a distinct original asset.

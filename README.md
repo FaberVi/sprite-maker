@@ -20,7 +20,7 @@ Generating one attractive image is easy. A production asset also needs a stable 
 
 Sprite Studio keeps that work in one desktop workspace. Describe an asset in chat, attach or paste references, inspect the result at pixel scale, generate a high-frame-count AI animation with strict identity and neighbor references, test the loop, and export a sheet without losing the source files or the conversation that produced them.
 
-The project is open source, local first, and built with Tauri, Svelte, Rust, SQLite, and an installed Codex or Cursor CLI. It does not target Android or iOS.
+The project is open source, local first, and built with Tauri, Svelte, Rust, SQLite, and an installed Codex, Cursor, or Antigravity CLI. It does not target Android or iOS.
 
 ## The workflow
 
@@ -97,7 +97,7 @@ Terrain requests produce one large PNG atlas with compatible fills, edges, corne
 - Chat-local generation settings with Auto or Fixed frames, a 1–32 frame range, FPS, provider model, reasoning, deterministic frame adjustment, and interpolation enabled by default
 - Provider capability discovery, so unavailable models, reasoning levels, multi-image input, structured output, or transparency are not falsely offered
 - Dedicated harnesses for characters, creatures, game objects, animation, effects, terrain atlases, and asset packs
-- Built-in art directions for cozy chibi, classic pixel art, limited palette, one-bit, isometric pixel, cel-shaded, and painterly fantasy work—with workspace and chat overrides
+- Built-in art directions for Pixel RPG, Graphic adventure, Cozy chibi, Limited palette, Isometric pixel, Painterly fantasy, Cel shaded, One-bit, Top-down adventure, SNES-era action RPG, Compact roguelike, Pixel platformer, NES 8-bit, Dark fantasy pixel, Paper cutout, Watercolor, Comic ink, Neon synth, Clay, and Voxel—with workspace and chat overrides
 - Full-size sprite viewer with zoom controls, pixel-perfect scaling, wheel zoom, metadata, reveal-on-disk, and **Animate this**
 - Grouped animation sets with frame-count badges, playable previews, a timeline editor, onion skinning, per-frame timing, templates, and non-destructive revisions
 - Rig-only, AI-polish, and experimental full-redraw finishing modes
@@ -150,7 +150,9 @@ flowchart LR
     F --> G["Validation, playback, and export"]
 ```
 
-Animation frames are generated individually in playback order, never as a pose sheet. Every call uses the exact identity reference and temporal neighbors; raw results are normalized back to the requested canvas, transparency, crisp palette, safe edge padding, and intended pose before entering the asset library.
+Rig-only animation (the default for `/animate` and the Motion dialog) is orchestrated by Sprite Studio itself: the app suggests joint points, saves the rig in the Rig tab, and renders frames with the native Rust renderer. The agent is used only to create the source master when one is missing, or when you opt into AI polish / full redraw.
+
+For polish modes that still use the agent, animation frames are generated individually in playback order, never as a pose sheet. Every call uses the exact identity reference and temporal neighbors; raw results are normalized back to the requested canvas, transparency, crisp palette, safe edge padding, and intended pose before entering the asset library.
 
 ## Desktop workbench
 
@@ -176,8 +178,9 @@ VFX worktrees add their effect tools without removing the rest of the workbench.
 - [Bun](https://bun.sh/)
 - Stable [Rust](https://www.rust-lang.org/tools/install)
 - The native prerequisites required by Tauri 2 for your desktop operating system
-- An installed Codex CLI or Cursor CLI (`agent`) for live agent conversations and access to its reported models
+- An installed Codex CLI, Cursor CLI (`agent`), or Antigravity CLI (`agy`) for live agent conversations and access to its reported models
 - Cursor 2.4 or later when using Cursor Image (native GenerateImage). Authenticate with `agent login` or `CURSOR_API_KEY`
+- Antigravity CLI when using Antigravity Image (native `generate_image`). Authenticate with an interactive `agy` session from Settings → Providers
 
 ### Run in development
 
@@ -193,6 +196,53 @@ bun tauri dev
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
+
+## MCP server (headless)
+
+`sprite-studio-mcp` is a stdio MCP daemon that reuses the same SQLite database and workspace files as the desktop app. The GUI does not need to be open. It orchestrates installed agent CLIs (Codex by default); it does not replace provider login.
+
+This is a different server from the per-workspace Python helper at `.sprite-studio/sprite_rig_mcp.py`, which only talks to the local rig renderer.
+
+### Build
+
+```bash
+cargo build --manifest-path src-tauri/Cargo.toml --release --bin sprite-studio-mcp
+```
+
+The binary is `src-tauri/target/release/sprite-studio-mcp` (`.exe` on Windows). Keep that path in `mcp.json` — do not set `command` to `agent`.
+
+### Prerequisites
+
+- Codex CLI installed and authenticated (`codex login`). That is the default generation provider so a Cursor MCP client does not nest Cursor CLI.
+- Optional: Antigravity (`agy`) or another supported CLI if you pass `provider` explicitly. `provider: "cursor"` is allowed but will spawn Cursor CLI from inside Cursor.
+- Interactive `agent login` / `codex login` stays out of band. The MCP only reports `studio_status`.
+
+The database path matches the desktop app (`com.jakes.sprite-maker`): `%APPDATA%\com.jakes.sprite-maker\sprite-studio.sqlite3` on Windows, `~/Library/Application Support/com.jakes.sprite-maker/` on macOS.
+
+### Cursor `mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "sprite-studio": {
+      "command": "C:/Users/You/Documents/GitHub/Web/sprite-maker/src-tauri/target/release/sprite-studio-mcp.exe"
+    }
+  }
+}
+```
+
+On macOS or Linux, point `command` at `src-tauri/target/release/sprite-studio-mcp`.
+
+### Example: generate a 32×32 slime
+
+1. `studio_status` — confirm Codex is installed and authenticated.
+2. `open_workspace` with the project folder `path` (created if missing).
+3. `ensure_conversation` with that `workspaceId` and optional `stylePreset` such as `compact-roguelike`. Omit `provider` to use Codex.
+4. `generate` with prompt `a cute green slime idle sprite, 32 by 32 pixels, transparent background` and `generation: { "width": 32, "height": 32, "frames": 1 }`.
+5. Poll `get_generation` with the returned `requestId` until `status` is `completed` or `failed`.
+6. `list_artifacts` with the `workspaceId` to get PNG paths under `assets/`.
+
+Phase 2 tools (`export`, `queue_sprite_sheet`, `queue_procedural_vfx`, `get_job`, `quality_report`, `list_assets`, `list_packs`) run in Rust without spawning an agent.
 
 ### Build a desktop bundle
 

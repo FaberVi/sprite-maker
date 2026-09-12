@@ -7,12 +7,13 @@ newline-delimited JSON-RPC; stdout is reserved exclusively for protocol output.
 
 import argparse
 import json
-import math
 import os
-import stat
 import subprocess
 import sys
-from pathlib import Path
+
+from sprite_rig_json import reject_json_constant
+from sprite_rig_mcp_analysis import analyze_motion
+from sprite_rig_mcp_paths import bind_workspace, resolve_rig_path
 
 
 SERVER_NAME = "sprite-studio-rig"
@@ -32,10 +33,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Sprite Studio rig MCP server")
     parser.add_argument("--workspace", required=True, help="Bound Sprite Studio workspace")
     return parser.parse_args()
-
-
-def reject_json_constant(value):
-    raise ValueError(f"non-finite JSON constant is not allowed: {value}")
 
 
 def protocol_error(request_id, code, message, data=None):
@@ -145,45 +142,11 @@ TOOLS = [
 
 class RigServer:
     def __init__(self, workspace):
-        raw_workspace = Path(workspace).expanduser()
-        if not raw_workspace.is_dir():
-            raise ValueError(f"workspace does not exist: {raw_workspace}")
-        self.workspace = raw_workspace.resolve()
-        if raw_workspace.is_symlink():
-            raise ValueError("workspace cannot be a symbolic link")
-        self.rig_root = (self.workspace / ".sprite-studio" / "rigs").resolve()
-        self.engine = (self.workspace / ".sprite-studio" / "sprite_rig.py").resolve()
-        if not self.rig_root.is_dir() or not self.rig_root.is_relative_to(self.workspace):
-            raise ValueError("workspace is missing .sprite-studio/rigs")
-        if not self.engine.is_file() or not self.engine.is_relative_to(self.workspace):
-            raise ValueError("workspace is missing .sprite-studio/sprite_rig.py")
+        self.workspace, self.rig_root, self.engine = bind_workspace(workspace)
         self.legacy_state = "new"
 
     def resolve_rig(self, value):
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("rig must be a non-empty workspace-relative JSON path")
-        supplied = Path(value)
-        if supplied.is_absolute():
-            raise ValueError("rig must be workspace-relative, not absolute")
-        candidate = (self.workspace / supplied).resolve()
-        if not candidate.is_relative_to(self.rig_root):
-            raise ValueError("rig must stay under .sprite-studio/rigs")
-        if candidate.suffix.lower() != ".json" or not candidate.is_file():
-            raise ValueError("rig must be an existing JSON file under .sprite-studio/rigs")
-        try:
-            opened = candidate.open("rb")
-            opened_stat = os.fstat(opened.fileno())
-            path_stat = candidate.stat()
-        except OSError as error:
-            raise ValueError(f"cannot open rig: {error}") from None
-        finally:
-            if "opened" in locals():
-                opened.close()
-        if (opened_stat.st_dev, opened_stat.st_ino) != (path_stat.st_dev, path_stat.st_ino):
-            raise ValueError("rig changed while its path was being verified")
-        if not stat.S_ISREG(opened_stat.st_mode):
-            raise ValueError("rig must be a regular JSON file")
-        return candidate
+        return resolve_rig_path(self.workspace, self.rig_root, value)
 
     def run_engine(self, rig, render):
         relative = rig.relative_to(self.workspace)
@@ -221,85 +184,7 @@ class RigServer:
 
     @staticmethod
     def analyze(report):
-        if not isinstance(report.get("rigVersion"), int) or report["rigVersion"] < 2:
-            raise ValueError("motion analysis requires a rigVersion 2 or newer articulated rig")
-        analysis = report.get("analysis")
-        if not isinstance(analysis, dict):
-            raise ValueError("validated rig did not return solved motion analysis")
-        energies = analysis.get("transitionEnergyPx")
-        contacts = analysis.get("plantedContacts")
-        phases = analysis.get("phases")
-        poses = analysis.get("poses", [])
-        joints = analysis.get("joints", [])
-        if not isinstance(energies, list) or not energies:
-            raise ValueError("validated rig has no solved transition-energy series")
-        if not isinstance(contacts, list) or not contacts:
-            raise ValueError("validated rig has no solved planted contacts")
-        if not isinstance(phases, list) or not all(isinstance(value, str) and value for value in phases):
-            raise ValueError("validated rig has incomplete gait phases")
-        if not isinstance(poses, list) or not all(isinstance(value, str) for value in poses):
-            raise ValueError("validated rig returned invalid named poses")
-        if not isinstance(joints, list) or not all(isinstance(value, dict) for value in joints):
-            raise ValueError("validated rig returned an invalid observed-joint map")
-        master_hash = report.get("masterHash")
-        rig_hash = report.get("rigHash")
-        frame_hashes = report.get("quality", {}).get("renderedFrameHashes")
-        if not all(
-            isinstance(value, str)
-            and len(value) == 64
-            and all(character in "0123456789abcdef" for character in value)
-            for value in (master_hash, rig_hash)
-        ):
-            raise ValueError("validated rig did not return source and rig identity hashes")
-        if (
-            not isinstance(frame_hashes, list)
-            or len(frame_hashes) != report.get("frames")
-            or not all(
-                isinstance(value, str)
-                and len(value) == 64
-                and all(character in "0123456789abcdef" for character in value)
-                for value in frame_hashes
-            )
-        ):
-            raise ValueError("validated rig did not return one raster hash per frame")
-        numeric = [float(value) for value in energies]
-        if not all(math.isfinite(value) and value >= 0 for value in numeric):
-            raise ValueError("validated rig returned invalid transition energies")
-        positive = [value for value in numeric if value > 1e-9]
-        cadence_ratio = max(positive) / min(positive) if positive else None
-        contact_groups = {}
-        for contact in contacts:
-            if not isinstance(contact, dict):
-                raise ValueError("validated rig returned an invalid planted contact")
-            key = f"{contact.get('part')}.{contact.get('anchor')}"
-            contact_groups.setdefault(key, []).append({
-                "frame": contact.get("frame"),
-                "x": contact.get("x"),
-                "y": contact.get("y"),
-            })
-        return {
-            "valid": report.get("valid") is True,
-            "name": report.get("name"),
-            "masterHash": master_hash,
-            "rigHash": rig_hash,
-            "rigVersion": report.get("rigVersion"),
-            "frameCount": report.get("frames"),
-            "uniqueRenderedFrames": report.get("quality", {}).get("uniqueRenderedFrames"),
-            "renderedFrameHashes": frame_hashes,
-            "looping": analysis.get("looping"),
-            "rootMotion": analysis.get("rootMotion"),
-            "rigProfile": analysis.get("rigProfile"),
-            "joints": joints,
-            "visibleJointCount": sum(
-                1 for joint in joints if joint.get("visibility") == "visible"
-            ),
-            "phases": phases,
-            "poses": poses,
-            "transitionEnergyPx": numeric,
-            "cadenceRatio": round(cadence_ratio, 6) if cadence_ratio is not None else None,
-            "plantedContactGroups": contact_groups,
-            "warnings": report.get("warnings", []),
-        }
+        return analyze_motion(report)
 
     def call_tool(self, name, arguments):
         if not isinstance(arguments, dict):

@@ -25,4 +25,10 @@ describe("generation profile defaults", () => {
     expect(normalizeGenerationProfile({ imageProviderId: "imagegen" }, [], "cursor").imageProviderId).toBe("cursor-image");
     expect(normalizeGenerationProfile({ imageProviderId: "grok-image" }, [], "cursor").imageProviderId).toBe("grok-image");
   });
+
+  test("maps antigravity chats to native antigravity image generation", () => {
+    expect(defaultImageProviderId("antigravity")).toBe("antigravity-image");
+    expect(normalizeGenerationProfile({ imageProviderId: "imagegen" }, [], "antigravity").imageProviderId).toBe("antigravity-image");
+    expect(normalizeGenerationProfile({ imageProviderId: "grok-image" }, [], "antigravity").imageProviderId).toBe("grok-image");
+  });
 });

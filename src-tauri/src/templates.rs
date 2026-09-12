@@ -1,4 +1,5 @@
 use crate::{
+    animations::resolve_animation_frames,
     assets::get_asset,
     error::{CommandError, CommandResult},
     models::{
@@ -156,19 +157,24 @@ pub fn create_animation_template(
     }
     let minimum = min_frames.clamp(1, 64);
     let maximum = max_frames.clamp(minimum, 64);
-    let (project_id, animation_name, fps, looping, frames_json): (
+    let (project_id, animation_name, fps, looping, frames): (
         String,
         String,
         f64,
         bool,
-        String,
-    ) =
-        {
-            let connection = state
-                .db
-                .lock()
-                .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
-            connection
+        Vec<AnimationFrame>,
+    ) = {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
+        let (project_id, animation_name, fps, looping, frames_json): (
+            String,
+            String,
+            f64,
+            bool,
+            String,
+        ) = connection
             .query_row(
                 "SELECT workspace_id, name, fps, looping, frames_json FROM animations WHERE id=?1",
                 [&animation_id],
@@ -177,9 +183,10 @@ pub fn create_animation_template(
             .optional()?
             .ok_or_else(|| {
                 CommandError::new("animation_not_found", "The source animation no longer exists")
-            })?
-        };
-    let frames: Vec<AnimationFrame> = serde_json::from_str(&frames_json).unwrap_or_default();
+            })?;
+        let frames = resolve_animation_frames(&connection, &animation_id, &frames_json)?;
+        (project_id, animation_name, fps, looping, frames)
+    };
     if frames.is_empty() {
         return Err(CommandError::new(
             "empty_animation",

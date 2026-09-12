@@ -3,18 +3,18 @@
   import { listen } from "@tauri-apps/api/event";
   import { open } from "@tauri-apps/plugin-dialog";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
-  import { Play, Pause, SkipBack, SkipForward, Plus, Copy, Trash2, GripVertical, Save, Download, Clapperboard, Repeat2, FileKey2, ShieldCheck } from "lucide-svelte";
+  import { Play, Pause, SkipBack, SkipForward, Plus, Copy, Trash2, GripVertical, Save, Download, Clapperboard, Repeat2, FileKey2, ShieldCheck, Bone, FolderOpen } from "lucide-svelte";
   import { api, assetUrl } from "$lib/api";
   import TemplateDialog from "$lib/components/TemplateDialog.svelte";
   import TemplateApplyDialog from "$lib/components/TemplateApplyDialog.svelte";
   import QualityPanel from "$lib/components/QualityPanel.svelte";
-  import { errorMessage, type Animation, type AnimationFrame, type AnimationTemplate, type Asset, type BackgroundJob, type FrameMode, type JobEvent, type QualityCheck, type QualityReport, type TemplateApplication } from "$lib/types";
+  import { errorMessage, type Animation, type AnimationFrame, type AnimationTemplate, type Asset, type BackgroundJob, type FrameMode, type GenerationManifest, type JobEvent, type QualityCheck, type QualityReport, type TemplateApplication, type WorkspaceRigSpec } from "$lib/types";
 
-  let { workspaceId, worktreeId, assets, animations, templates, selectedAnimation, active = true, onAnimations, onTemplates, onSelected, onTemplateApplication, onError, onNotice }: {
-    workspaceId: string; worktreeId?: string; assets: Asset[]; animations: Animation[]; templates: AnimationTemplate[]; selectedAnimation?: Animation;
-    active?: boolean; onAnimations: (animations: Animation[]) => void; onTemplates: (templates: AnimationTemplate[]) => void;
-    onSelected: (animation: Animation) => void; onTemplateApplication: (application:TemplateApplication)=>void;
-    onError: (message: string) => void; onNotice: (message: string) => void;
+  let { workspaceId, workspacePath, worktreeId, assets, animations, templates, selectedAnimation, linkedRigId, active = true, onAnimations, onAssetsRefresh, onTemplates, onSelected, onOpenRig, onTemplateApplication, onError, onNotice }: {
+    workspaceId: string; workspacePath?: string; worktreeId?: string; assets: Asset[]; animations: Animation[]; templates: AnimationTemplate[]; selectedAnimation?: Animation;
+    linkedRigId?: string; active?: boolean; onAnimations: (animations: Animation[]) => void; onAssetsRefresh?: () => void | Promise<void>;
+    onTemplates: (templates: AnimationTemplate[]) => void; onSelected: (animation: Animation) => void; onOpenRig?: (rigId: string) => void;
+    onTemplateApplication: (application:TemplateApplication)=>void; onError: (message: string) => void; onNotice: (message: string) => void;
   } = $props();
   let selectedPropId = $state<string | undefined>();
   let animationId = $state<string | undefined>();
@@ -37,6 +37,38 @@
   let qualityJob = $state<BackgroundJob>();
   let repairing = $state(false);
   let optimizing = $state(false);
+  let previewEpoch = $state(0);
+  let generationManifest = $state<GenerationManifest | null>();
+  let workspaceRigs = $state<WorkspaceRigSpec[]>([]);
+
+  function previewSrc(path: string) {
+    const url = assetUrl(path);
+    return previewEpoch ? `${url}${url.includes("?") ? "&" : "?"}v=${previewEpoch}` : url;
+  }
+
+  async function refreshAfterRepair(repaired: Animation) {
+    await onAssetsRefresh?.();
+    loadAnimation(repaired);
+    previewEpoch += 1;
+  }
+
+  $effect(() => {
+    if (!active || !workspaceId) return;
+    void api.getGenerationManifest(workspaceId).then(value => generationManifest = value).catch(() => generationManifest = null);
+    void api.listWorkspaceRigSpecs(workspaceId).then(value => workspaceRigs = value).catch(() => workspaceRigs = []);
+  });
+
+  const linkedWorkspaceRig = $derived(workspaceRigs.find(spec => generationManifest?.rig === spec.relativePath));
+  const effectiveLinkedRigId = $derived(generationManifest?.rigId ?? linkedRigId);
+  const nativeRigLabel = $derived(effectiveLinkedRigId ? "Native rig saved in Rig editor" : linkedWorkspaceRig ? `Workspace rig: ${linkedWorkspaceRig.name}` : undefined);
+
+  async function revealWorkspaceRig() {
+    if (!workspacePath || !linkedWorkspaceRig) return;
+    const separator = workspacePath.includes("\\") ? "\\" : "/";
+    const jsonPath = `${workspacePath}${workspacePath.endsWith(separator) ? "" : separator}${linkedWorkspaceRig.relativePath.replace(/\//g, separator)}`;
+    try { await revealItemInDir(jsonPath); }
+    catch (error) { onError(errorMessage(error)); }
+  }
 
   $effect(() => {
     if (selectedAnimation && selectedAnimation.id !== selectedPropId) loadAnimation(selectedAnimation);
@@ -79,7 +111,7 @@
     try {
       const animation=await api.saveAnimation({id:animationId,workspaceId,worktreeId,name,fps:Number(fps),looping,frames});
       selectedPropId=animation.id;animationId=animation.id;onSelected(animation);onAnimations(await api.listAnimations(workspaceId,worktreeId));onNotice("Animation saved");
-    } catch(error){onError(errorMessage(error));} finally{saving=false;}
+    } catch(error){onError(errorMessage(error));throw error;} finally{saving=false;}
   }
   async function exportSheet() {
     if(!animationId){onError("Save the animation before exporting");return;}
@@ -98,8 +130,31 @@
   async function loadQuality(id:string){try{qualityReport=(await api.getQualityReport(id))??undefined;}catch(error){onError(errorMessage(error));}}
   async function analyze(){if(!animationId){onError("Save the animation before analyzing it");return;}try{qualityOpen=true;qualityJob=await api.queueQualityAnalysis(animationId);onNotice("Quality analysis queued");}catch(error){onError(errorMessage(error));}}
   async function ignoreCheck(check:QualityCheck){try{await api.acknowledgeQualityCheck(check.id,true);if(animationId)await loadQuality(animationId);}catch(error){onError(errorMessage(error));}}
-  async function repairCheck(check:QualityCheck){if(check.frameIndex!==undefined)activeFrame=check.frameIndex;if(check.repairAction==="remove_duplicate"&&check.frameIndex!==undefined){removeFrame(check.frameIndex);onNotice(`Removed duplicate Frame ${check.frameIndex+1} from the unsaved timeline`);return;}if(animationId&&["auto_align","add_padding","normalize_dimensions"].includes(check.repairAction??"")){repairing=true;try{const repaired=await api.repairAnimationAlignment(animationId);onAnimations(await api.listAnimations(workspaceId,worktreeId));onSelected(repaired);qualityOpen=true;qualityJob=await api.queueQualityAnalysis(repaired.id);onNotice("Created a preserved, aligned animation revision and started re-analysis");}catch(error){onError(errorMessage(error));}finally{repairing=false;}return;}onNotice("Selected the affected frame. Regeneration guidance is available in the warning details.");}
-  async function optimizeFrames(){if(!animationId)return;optimizing=true;try{const result=await api.optimizeAnimationFrames(animationId,3);onAnimations(await api.listAnimations(workspaceId,worktreeId));qualityReport=undefined;onSelected(result.animation);qualityOpen=true;qualityJob=await api.queueQualityAnalysis(result.animation.id);onNotice(`${result.summary}. Created a preserved revision and started re-analysis`);}catch(error){onError(errorMessage(error));}finally{optimizing=false;}}
+  async function repairCheck(check:QualityCheck){
+    if(repairing||optimizing)return;
+    if(check.frameIndex!==undefined)activeFrame=check.frameIndex;
+    if(check.repairAction==="remove_duplicate"&&check.frameIndex!==undefined){
+      removeFrame(check.frameIndex);
+      if(animationId){
+        saving=true;
+        try{await save();onNotice(`Removed duplicate Frame ${check.frameIndex+1} and saved`);}
+        catch(error){onError(errorMessage(error));}finally{saving=false;}
+      }else{onNotice(`Removed duplicate Frame ${check.frameIndex+1} from the unsaved timeline`);}
+      return;
+    }
+    if(animationId&&check.repairAction==="inspect_transparency"){
+      repairing=true;qualityReport=undefined;
+      try{const repaired=await api.repairAnimationTransparency(animationId);onAnimations(await api.listAnimations(workspaceId,worktreeId));await refreshAfterRepair(repaired);onSelected(repaired);qualityOpen=true;qualityJob=await api.queueQualityAnalysis(animationId);onNotice("Repaired frame transparency and started re-analysis");}
+      catch(error){onError(errorMessage(error));}finally{repairing=false;}return;
+    }
+    if(animationId&&["auto_align","add_padding","normalize_dimensions"].includes(check.repairAction??"")){
+      repairing=true;qualityReport=undefined;
+      try{const repaired=await api.repairAnimationAlignment(animationId);onAnimations(await api.listAnimations(workspaceId,worktreeId));await refreshAfterRepair(repaired);onSelected(repaired);qualityOpen=true;qualityJob=await api.queueQualityAnalysis(repaired.id);onNotice("Created a preserved, aligned animation revision and started re-analysis");}
+      catch(error){onError(errorMessage(error));}finally{repairing=false;}return;
+    }
+    onNotice("Selected the affected frame. Regeneration guidance is available in the warning details.");
+  }
+  async function optimizeFrames(){if(!animationId||repairing||optimizing)return;optimizing=true;qualityReport=undefined;try{const result=await api.optimizeAnimationFrames(animationId,3);onAnimations(await api.listAnimations(workspaceId,worktreeId));await refreshAfterRepair(result.animation);onSelected(result.animation);qualityOpen=true;qualityJob=await api.queueQualityAnalysis(result.animation.id);onNotice(`${result.summary}. Created a preserved revision and started re-analysis`);}catch(error){onError(errorMessage(error));}finally{optimizing=false;}}
   onMount(()=>{const unlistenPromise=listen<JobEvent>("job-event",async({payload})=>{if(payload.job.kind!=="quality_analysis"||payload.job.id!==qualityJob?.id)return;qualityJob=payload.job;if(payload.job.status==="completed"&&animationId){await loadQuality(animationId);onNotice("Animation quality report completed");}if(payload.job.status==="failed")onError(payload.job.errorMessage??"Quality analysis failed");});return()=>{unlistenPromise.then(unlisten=>unlisten());};});
 </script>
 
@@ -108,13 +163,14 @@
   <div class="body" class:with-quality={qualityOpen}>
     <aside class="animation-list"><div class="label">ANIMATIONS</div>{#each animations as animation}<button class:active={animation.id===animationId} onclick={()=>selectAnimation(animation)}><Clapperboard size={13}/><span>{animation.name}</span><small>{animation.frames.length}</small></button>{/each}{#if !animations.length}<p>No saved animations</p>{/if}<div class="label templates-label">MOTION TEMPLATES</div>{#each templates as template}<button class="template" onclick={()=>applyingTemplate=template}><FileKey2 size={13}/><span>{template.name}</span><small>{template.frameMode==="auto"?`${template.minFrames}–${template.maxFrames}`:template.preferredFrames}</small></button>{/each}{#if !templates.length}<p>Save an animation as reusable motion</p>{/if}</aside>
     <div class="workspace">
-      <div class="properties"><label>Name<input bind:value={name}/></label><label>FPS<input type="number" min="1" max="60" bind:value={fps}/></label><label class="check"><input type="checkbox" bind:checked={looping}/><Repeat2 size={12}/> Loop</label><label>Preview<select bind:value={scale}><option value={1}>1×</option><option value={2}>2×</option><option value={3}>3×</option><option value={4}>4×</option></select></label><label class="check"><input type="checkbox" bind:checked={onionSkin}/> Onion skin</label>{#if onionSkin}<label class="onion-opacity">Opacity<input aria-label="Onion skin opacity" type="range" min="0.08" max="0.55" step="0.01" bind:value={onionOpacity}/></label>{/if}</div>
+      <div class="properties"><label>Name<input bind:value={name}/></label>
+        {#if nativeRigLabel}<div class="rig-link"><Bone size={12}/><span>{nativeRigLabel}{#if linkedWorkspaceRig} · {linkedWorkspaceRig.frameCount} poses{/if}</span>{#if effectiveLinkedRigId && onOpenRig}<button type="button" onclick={()=>onOpenRig(effectiveLinkedRigId)}>Open rig</button>{:else if linkedWorkspaceRig && workspacePath}<button type="button" onclick={revealWorkspaceRig}><FolderOpen size={11}/> Show JSON</button>{/if}</div>{/if}<label>FPS<input type="number" min="1" max="60" bind:value={fps}/></label><label class="check"><input type="checkbox" bind:checked={looping}/><Repeat2 size={12}/> Loop</label><label>Preview<select bind:value={scale}><option value={1}>1×</option><option value={2}>2×</option><option value={3}>3×</option><option value={4}>4×</option></select></label><label class="check"><input type="checkbox" bind:checked={onionSkin}/> Onion skin</label>{#if onionSkin}<label class="onion-opacity">Opacity<input aria-label="Onion skin opacity" type="range" min="0.08" max="0.55" step="0.01" bind:value={onionOpacity}/></label>{/if}</div>
       <div class="preview-area">
         <div class="preview-stage">
           {#if currentAsset}
-            {#if onionSkin && previousAsset}<img class="onion previous" src={assetUrl(previousAsset.path)} alt="Previous frame onion skin" style={`transform:scale(${scale});opacity:${onionOpacity}`}/>{/if}
-            {#if onionSkin && nextAsset}<img class="onion next" src={assetUrl(nextAsset.path)} alt="Next frame onion skin" style={`transform:scale(${scale});opacity:${onionOpacity}`}/>{/if}
-            <img class="current" src={assetUrl(currentAsset.path)} alt={currentAsset.name} style={`transform:scale(${scale})`}/>
+            {#if onionSkin && previousAsset}<img class="onion previous" src={previewSrc(previousAsset.path)} alt="Previous frame onion skin" style={`transform:scale(${scale});opacity:${onionOpacity}`}/>{/if}
+            {#if onionSkin && nextAsset}<img class="onion next" src={previewSrc(nextAsset.path)} alt="Next frame onion skin" style={`transform:scale(${scale});opacity:${onionOpacity}`}/>{/if}
+            <img class="current" src={previewSrc(currentAsset.path)} alt={currentAsset.name} style={`transform:scale(${scale})`}/>
           {:else}<div class="preview-empty"><Clapperboard size={25}/><span>Drop image assets into the timeline</span></div>{/if}
         </div>
         <div class="playback"><button onclick={()=>activeFrame=0} title="First frame"><SkipBack size={14}/></button><button class="play" onclick={()=>playing=!playing} disabled={!frames.length} title={playing?"Pause animation":"Play animation"}>{#if playing}<Pause size={15}/>{:else}<Play size={15} fill="currentColor"/>{/if}</button><button onclick={()=>activeFrame=Math.min(frames.length-1,activeFrame+1)} title="Next frame"><SkipForward size={14}/></button><span>Frame {frames.length ? activeFrame+1 : 0} / {frames.length}</span></div>
@@ -125,7 +181,7 @@
           {#each frames as frame,index}
             {@const asset=frameAsset(frame)}
             <button class="frame" class:active={index===activeFrame} class:quality-warning={frameSeverity(index)==="warning"} class:quality-error={frameSeverity(index)==="error"} class:quality-good={frameSeverity(index)==="good"} onclick={()=>activeFrame=index} draggable="true" ondragstart={()=>draggedIndex=index} ondragover={(event)=>event.preventDefault()} ondrop={(event)=>{event.stopPropagation();drop(event,index)}}>
-              <span class="number">{String(index+1).padStart(2,"0")}{#if frameSeverity(index)}<i class={frameSeverity(index)}></i>{/if}</span><span class="frame-image">{#if asset}<img src={assetUrl(asset.path)} alt={asset.name}/>{:else}<span class="missing">!</span>{/if}</span>
+              <span class="number">{String(index+1).padStart(2,"0")}{#if frameSeverity(index)}<i class={frameSeverity(index)}></i>{/if}</span><span class="frame-image">{#if asset}<img src={previewSrc(asset.path)} alt={asset.name}/>{:else}<span class="missing">!</span>{/if}</span>
               <span class="duration"><input type="number" min="16" max="5000" value={frame.durationMs ?? Math.round(1000/fps)} onchange={(event)=>{const next=[...frames];next[index]={...frame,durationMs:Number(event.currentTarget.value)};frames=next;}}/> ms</span>
               <span class="frame-actions"><span role="button" tabindex="0" title="Duplicate" onclick={(event)=>{event.stopPropagation();duplicate(index)}} onkeydown={(event)=>{if(event.key==="Enter"){event.stopPropagation();duplicate(index)}}}><Copy size={11}/></span><span role="button" tabindex="0" title="Remove" onclick={(event)=>{event.stopPropagation();removeFrame(index)}} onkeydown={(event)=>{if(event.key==="Enter"){event.stopPropagation();removeFrame(index)}}}><Trash2 size={11}/></span><GripVertical size={11}/></span>
             </button>
@@ -135,7 +191,7 @@
         <div class="asset-tray"><span>ADD FRAME</span><div>{#each assets as asset}<button onclick={()=>addFrame(asset.id)} title={`Add ${asset.name}`}><img src={assetUrl(asset.path)} alt={asset.name}/></button>{/each}{#if !assets.length}<small>Import assets first</small>{/if}</div></div>
       </div>
     </div>
-    {#if qualityOpen}<QualityPanel report={qualityReport} job={qualityJob} {canOptimize} {optimizing} onAnalyze={analyze} onOptimize={optimizeFrames} onFrame={(index)=>activeFrame=index} onIgnore={ignoreCheck} onRepair={repairCheck} onClose={()=>qualityOpen=false}/>{/if}
+    {#if qualityOpen}<QualityPanel report={qualityReport} job={qualityJob} {canOptimize} {optimizing} repairing={repairing} onAnalyze={analyze} onOptimize={optimizeFrames} onFrame={(index)=>activeFrame=index} onIgnore={ignoreCheck} onRepair={repairCheck} onClose={()=>qualityOpen=false}/>{/if}
   </div>
 </section>
 {#if templateDialog}<TemplateDialog animationName={name} frameCount={frames.length} busy={templateBusy} onCreate={createTemplate} onClose={()=>templateDialog=false}/>{/if}
@@ -144,7 +200,7 @@
 <style>
   .editor{height:100%;display:flex;flex-direction:column;background:var(--bg);min-width:0}header{height:49px;box-sizing:border-box;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 13px 0 17px}header h1{font-size:12px;margin:0}header p{font-size:11px;color:var(--faint);margin:3px 0 0}.actions{display:flex;gap:5px}.actions button{height:28px;border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:5px;display:flex;align-items:center;gap:5px;padding:0 8px;font:inherit;font-size:11px;cursor:pointer}.actions button.primary{background:var(--text);color:var(--bg);border-color:var(--text)}button:disabled{opacity:.4;cursor:not-allowed}
   .body{flex:1;min-height:0;display:grid;grid-template-columns:190px minmax(0,1fr)}.body.with-quality{grid-template-columns:190px minmax(0,1fr) 285px}.animation-list{border-right:1px solid var(--border);background:var(--sidebar);padding:12px 8px;overflow:auto}.label{font-size:10px;color:var(--faint);letter-spacing:.13em;font-weight:700;padding:4px 7px 7px}.templates-label{border-top:1px solid var(--border);margin-top:10px;padding-top:14px}.animation-list>button{width:100%;height:29px;border:0;background:transparent;color:var(--muted);border-radius:4px;display:grid;grid-template-columns:14px minmax(0,1fr) 24px;gap:6px;align-items:center;text-align:left;padding:0 7px;font:inherit;font-size:12px;cursor:pointer}.animation-list>button.active,.animation-list>button:hover{background:var(--selected);color:var(--text)}.animation-list>button.template :global(svg){color:var(--accent)}.animation-list button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.animation-list button small{font-size:9px;color:var(--faint);text-align:right}.animation-list p{font-size:10px;line-height:1.45;color:var(--faint);padding:3px 7px}
-  .workspace{min-width:0;min-height:0;display:grid;grid-template-rows:46px minmax(220px,1fr) 255px}.properties{border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 14px}.properties label{font-size:10px;color:var(--faint);display:flex;align-items:center;gap:6px}.properties label:first-child input{width:150px}.properties input[type="number"]{width:48px}.properties input,.properties select{height:25px;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;font-size:11px;padding:0 6px;outline:0}.properties .check{color:var(--muted)}.properties .check input{height:auto}.properties select{width:50px}.properties .onion-opacity{gap:4px}.properties .onion-opacity input{width:58px;height:auto;padding:0;accent-color:var(--accent)}
+  .workspace{min-width:0;min-height:0;display:grid;grid-template-rows:46px minmax(220px,1fr) 255px}.properties{border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 14px}.properties label{font-size:10px;color:var(--faint);display:flex;align-items:center;gap:6px}.properties label:first-child input{width:150px}.properties input[type="number"]{width:48px}.properties input,.properties select{height:25px;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:4px;color:var(--text);font:inherit;font-size:11px;padding:0 6px;outline:0}.properties .check{color:var(--muted)}.properties .check input{height:auto}.properties select{width:50px}.properties .onion-opacity{gap:4px}.properties .onion-opacity input{width:58px;height:auto;padding:0;accent-color:var(--accent)}.rig-link{display:flex;align-items:center;gap:6px;margin-left:auto;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--surface);font-size:10px;color:var(--muted)}.rig-link :global(svg){color:var(--accent)}.rig-link button{height:22px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text);font:inherit;font-size:9px;padding:0 6px;cursor:pointer}
   .preview-area{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);overflow:hidden}.preview-stage{position:relative;width:330px;height:230px;display:grid;place-items:center;background-color:var(--preview);background-image:linear-gradient(45deg,var(--checker) 25%,transparent 25%),linear-gradient(-45deg,var(--checker) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,var(--checker) 75%),linear-gradient(-45deg,transparent 75%,var(--checker) 75%);background-size:16px 16px;background-position:0 0,0 8px,8px -8px,-8px 0;border:1px solid var(--border-strong);box-shadow:0 14px 36px #0005}.preview-stage img{position:absolute;max-width:45%;max-height:45%;object-fit:contain;image-rendering:pixelated;transform-origin:center}.preview-stage img.current{z-index:2}.preview-stage img.onion{z-index:1;filter:saturate(.35)}.preview-stage img.onion.previous{mix-blend-mode:screen;filter:sepia(1) saturate(5) hue-rotate(160deg)}.preview-stage img.onion.next{mix-blend-mode:screen;filter:sepia(1) saturate(5) hue-rotate(285deg)}.preview-empty{display:flex;flex-direction:column;gap:10px;align-items:center;color:var(--faint);font-size:11px}.playback{display:flex;align-items:center;gap:5px;margin-top:14px}.playback button{width:27px;height:27px;border:1px solid var(--border-strong);background:var(--surface);color:var(--muted);border-radius:4px;display:grid;place-items:center;cursor:pointer}.playback .play{width:34px;background:var(--text);color:var(--bg)}.playback>span{font-size:11px;color:var(--faint);margin-left:8px}
   .timeline{border-top:1px solid var(--border);background:var(--sidebar);min-width:0;overflow:hidden}.timeline-head{height:30px;display:flex;align-items:center;justify-content:space-between;padding:0 13px}.timeline-head span,.asset-tray>span{font-size:10px;color:var(--faint);font-weight:700;letter-spacing:.12em}.timeline-head small{font-size:10px;color:var(--faint)}.frames{height:143px;display:flex;gap:6px;padding:0 12px 7px;overflow-x:auto}.frame{width:98px;min-width:98px;height:138px;border:1px solid var(--border);background:var(--surface);color:var(--muted);padding:0;border-radius:5px;display:grid;grid-template-rows:20px 72px 22px 20px;cursor:pointer;overflow:hidden}.frame.active{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent-dim)}.frame.quality-warning:not(.active){border-color:#8f6c36}.frame.quality-error:not(.active){border-color:#94504c}.number{font-size:10px;color:var(--faint);display:flex;align-items:center;padding:0 6px}.number i{width:6px;height:6px;border-radius:50%;margin-left:auto}.number i.good{background:#5ead7b}.number i.warning{background:#c89a4b}.number i.error{background:#cc6863}.frame-image{display:grid;place-items:center;background:var(--preview)}.frame-image img{max-width:86%;max-height:86%;object-fit:contain;image-rendering:pixelated}.missing{color:#c56f6b}.duration{font-size:7px;color:var(--faint);display:flex;align-items:center;justify-content:center;gap:2px}.duration input{width:38px;border:0;border-bottom:1px solid var(--border);background:transparent;color:var(--muted);font:inherit;font-size:10px;text-align:right;outline:0}.frame-actions{border-top:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:0 5px;color:var(--faint)}.frame-actions span{display:grid;place-items:center}.drop-target{height:136px;min-width:250px;border:1px dashed var(--border-strong);border-radius:5px;display:grid;place-items:center;color:var(--faint);font-size:11px}.asset-tray{height:72px;border-top:1px solid var(--border);padding:8px 12px;box-sizing:border-box;display:flex;gap:13px}.asset-tray>span{padding-top:5px}.asset-tray>div{display:flex;gap:5px;overflow-x:auto}.asset-tray button{width:45px;height:45px;min-width:45px;border:1px solid var(--border);background:var(--preview);border-radius:4px;padding:3px;cursor:pointer}.asset-tray button:hover{border-color:var(--accent)}.asset-tray img{width:100%;height:100%;object-fit:contain;image-rendering:pixelated}.asset-tray small{font-size:10px;color:var(--faint);padding:5px}
 </style>

@@ -4,6 +4,7 @@
   import LogoMark from "$lib/components/LogoMark.svelte";
   import { api } from "$lib/api";
   import { errorMessage, type Workspace } from "$lib/types";
+  import { displayPath } from "$lib/display-path";
 
   let { workspaces, onOpen, onCreated, onChanged, onError }: {
     workspaces: Workspace[];
@@ -103,7 +104,7 @@
           <div class="workspace-row">
             <button class="workspace" onclick={() => onOpen(workspace)}>
               <div class="folder"><FolderOpen size={17} /></div>
-              <div><strong>{workspace.name}</strong><small>{workspace.path}</small></div>
+              <div><strong>{workspace.name}</strong><small>{displayPath(workspace.path)}</small></div>
               <ArrowRight class="arrow" size={16} />
             </button>
             <button class="workspace-more" aria-label={`Manage ${workspace.name}`} title={`Manage ${workspace.name}`} onclick={() => workspaceMenu = workspaceMenu === workspace.id ? undefined : workspace.id}><MoreHorizontal size={15}/></button>

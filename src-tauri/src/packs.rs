@@ -33,7 +33,14 @@ pub fn list_asset_packs(
     workspace_id: String,
     state: State<'_, AppState>,
 ) -> CommandResult<Vec<AssetPack>> {
-    let root = workspace_path(&state, &workspace_id)?;
+    list_asset_packs_inner(&workspace_id, &state)
+}
+
+pub(crate) fn list_asset_packs_inner(
+    workspace_id: &str,
+    state: &AppState,
+) -> CommandResult<Vec<AssetPack>> {
+    let root = workspace_path(state, workspace_id)?;
     let directory = root.join(".sprite-studio/packs");
     std::fs::create_dir_all(&directory)?;
     let mut packs = Vec::new();

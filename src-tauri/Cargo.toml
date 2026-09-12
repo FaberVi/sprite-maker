@@ -4,12 +4,21 @@ version = "0.3.2"
 description = "Local-first AI game asset development environment"
 authors = ["Sprite Studio contributors"]
 edition = "2021"
+default-run = "sprite-maker"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 name = "sprite_maker_lib"
 crate-type = ["rlib"]
+
+[[bin]]
+name = "sprite-maker"
+path = "src/main.rs"
+
+[[bin]]
+name = "sprite-studio-mcp"
+path = "src/bin/sprite-studio-mcp.rs"
 
 [package.metadata.sprite-studio]
 supported-platforms = ["macos", "windows", "linux"]
@@ -27,11 +36,14 @@ rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
-tokio = { version = "1", features = ["process", "io-util", "sync", "macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["process", "io-util", "io-std", "sync", "macros", "rt-multi-thread"] }
+rmcp = { version = "3", features = ["transport-io"] }
+schemars = "1"
 which = "7"
 libc = "0.2"
 thiserror = "2"
 blake3 = "1.8"
+rayon = "1.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 base64 = "0.22"
 

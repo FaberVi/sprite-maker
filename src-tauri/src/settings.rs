@@ -8,6 +8,10 @@ use tauri::State;
 
 #[tauri::command]
 pub fn get_setting(key: String, state: State<'_, AppState>) -> CommandResult<serde_json::Value> {
+    get_setting_value(&state, &key)
+}
+
+pub(crate) fn get_setting_value(state: &AppState, key: &str) -> CommandResult<serde_json::Value> {
     let connection = state
         .db
         .lock()
@@ -33,6 +37,14 @@ pub fn set_setting(
     key: String,
     value: serde_json::Value,
     state: State<'_, AppState>,
+) -> CommandResult<()> {
+    set_setting_value(&state, &key, value)
+}
+
+pub(crate) fn set_setting_value(
+    state: &AppState,
+    key: &str,
+    value: serde_json::Value,
 ) -> CommandResult<()> {
     if key.trim().is_empty() {
         return Err(CommandError::new(

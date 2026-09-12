@@ -5,6 +5,7 @@ mod conversations;
 mod database;
 mod error;
 mod jobs;
+mod mcp;
 mod models;
 mod motion_planner;
 mod packs;
@@ -19,13 +20,166 @@ mod terrain;
 mod workspace;
 mod worktrees;
 
-use std::{collections::HashMap, sync::Mutex};
-use tauri::Manager;
+use crate::models::ProviderEvent;
+use serde::Serialize;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex},
+};
+use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
+const APP_IDENTIFIER: &str = "com.jakes.sprite-maker";
+
+#[derive(Clone)]
 pub struct AppState {
-    db: Mutex<rusqlite::Connection>,
-    cancellers: Mutex<HashMap<String, oneshot::Sender<()>>>,
+    db: Arc<Mutex<rusqlite::Connection>>,
+    cancellers: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    generations: Arc<Mutex<HashMap<String, GenerationSnapshot>>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct GenerationSnapshot {
+    pub request_id: String,
+    pub conversation_id: String,
+    pub assistant_id: String,
+    pub workspace_id: String,
+    pub status: String,
+    pub last_activity: Option<String>,
+    pub last_content: Option<String>,
+}
+
+impl AppState {
+    pub(crate) fn from_connection(connection: rusqlite::Connection) -> Self {
+        Self {
+            db: Arc::new(Mutex::new(connection)),
+            cancellers: Arc::new(Mutex::new(HashMap::new())),
+            generations: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub(crate) fn open_headless() -> error::CommandResult<(Self, PathBuf)> {
+        let db_path = sqlite_path();
+        let connection = database::open_shared(&db_path)?;
+        Ok((Self::from_connection(connection), db_path))
+    }
+
+    pub(crate) fn track_generation(
+        &self,
+        request_id: &str,
+        conversation_id: &str,
+        assistant_id: &str,
+        workspace_id: &str,
+    ) {
+        if let Ok(mut map) = self.generations.lock() {
+            map.insert(
+                request_id.to_string(),
+                GenerationSnapshot {
+                    request_id: request_id.to_string(),
+                    conversation_id: conversation_id.to_string(),
+                    assistant_id: assistant_id.to_string(),
+                    workspace_id: workspace_id.to_string(),
+                    status: "started".into(),
+                    last_activity: None,
+                    last_content: None,
+                },
+            );
+        }
+    }
+
+    pub(crate) fn record_provider_event(&self, event: &ProviderEvent) {
+        let Ok(mut map) = self.generations.lock() else {
+            return;
+        };
+        let entry = map
+            .entry(event.request_id.clone())
+            .or_insert_with(|| GenerationSnapshot {
+                request_id: event.request_id.clone(),
+                conversation_id: event.conversation_id.clone(),
+                assistant_id: String::new(),
+                workspace_id: String::new(),
+                status: "started".into(),
+                last_activity: None,
+                last_content: None,
+            });
+        entry.conversation_id = event.conversation_id.clone();
+        match event.event_type.as_str() {
+            "activity" => entry.last_activity = Some(event.content.clone()),
+            "content" => entry.last_content = Some(event.content.clone()),
+            "started" => {
+                entry.status = "started".into();
+                entry.last_activity = Some(event.content.clone());
+            }
+            "completed" | "failed" | "cancelled" => {
+                entry.status = event.event_type.clone();
+                entry.last_content = Some(event.content.clone());
+            }
+            _ => {}
+        }
+    }
+
+    pub(crate) fn generation_snapshot(&self, request_id: &str) -> Option<GenerationSnapshot> {
+        self.generations
+            .lock()
+            .ok()
+            .and_then(|map| map.get(request_id).cloned())
+    }
+}
+
+pub(crate) fn sqlite_path() -> PathBuf {
+    app_data_dir().join("sprite-studio.sqlite3")
+}
+
+pub(crate) fn app_data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        let roaming = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        roaming.join(APP_IDENTIFIER)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."));
+        home.join("Library/Application Support")
+            .join(APP_IDENTIFIER)
+    }
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
+            })
+            .unwrap_or_else(|| PathBuf::from("."));
+        base.join(APP_IDENTIFIER)
+    }
+}
+
+pub(crate) fn allow_asset_file(app: Option<&AppHandle>, path: &Path) -> error::CommandResult<()> {
+    if let Some(app) = app {
+        app.asset_protocol_scope()
+            .allow_file(path)
+            .map_err(|error| error::CommandError::new("asset_scope_error", error.to_string()))?;
+    }
+    Ok(())
+}
+
+pub(crate) fn allow_asset_directory(
+    app: Option<&AppHandle>,
+    path: &Path,
+    recursive: bool,
+) -> error::CommandResult<()> {
+    if let Some(app) = app {
+        app.asset_protocol_scope()
+            .allow_directory(path, recursive)
+            .map_err(|error| error::CommandError::new("asset_scope_error", error.to_string()))?;
+    }
+    Ok(())
 }
 
 pub fn run() {
@@ -37,10 +191,7 @@ pub fn run() {
                 format!("Could not resolve application data directory: {error}")
             })?;
             let connection = database::open(&data_directory.join("sprite-studio.sqlite3"))?;
-            app.manage(AppState {
-                db: Mutex::new(connection),
-                cancellers: Mutex::new(HashMap::new()),
-            });
+            app.manage(AppState::from_connection(connection));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -48,6 +199,9 @@ pub fn run() {
             workspace::load_sidebar_state,
             workspace::create_workspace,
             workspace::open_workspace,
+            workspace::run_sprite_polish,
+            workspace::archive_sprite_paths,
+            workspace::restore_sprite_paths,
             workspace::touch_workspace,
             workspace::rename_workspace,
             workspace::remove_workspace,
@@ -70,9 +224,12 @@ pub fn run() {
             conversations::restore_conversation,
             conversations::delete_conversation,
             conversations::list_messages,
+            conversations::record_chat_assistant,
+            conversations::record_chat_turn,
             conversations::update_message_metadata,
             providers::detect_providers,
             providers::install_agent_provider,
+            providers::authenticate_agent_provider,
             providers::save_image_provider,
             providers::delete_image_provider,
             providers::test_image_provider,
@@ -99,6 +256,7 @@ pub fn run() {
             terrain::export_godot_tileset,
             assets::get_generation_manifest,
             assets::get_generation_fingerprint,
+            assets::list_workspace_rig_specs,
             assets::scan_generation_assets,
             assets::list_asset_versions,
             packs::list_asset_packs,
@@ -118,6 +276,7 @@ pub fn run() {
             quality::acknowledge_quality_check,
             quality::optimize_animation_frames,
             quality::repair_animation_alignment,
+            quality::repair_animation_transparency,
             rig::list_rigs,
             rig::save_rig,
             rig::delete_rig,
@@ -132,4 +291,11 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+pub fn run_mcp() {
+    if let Err(error) = mcp::run() {
+        eprintln!("Sprite Studio MCP failed: {error}");
+        std::process::exit(1);
+    }
 }
