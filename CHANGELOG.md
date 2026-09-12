@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Animation
+
+- Fixed planted-contact two-bone IK so bent limb chains close onto the target instead of kicking away from it.
+
 ## 0.3.2 — 2026-08-19
 
 ### Animation reliability
