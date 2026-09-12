@@ -263,7 +263,7 @@ pub(super) fn solve_contact_ik(
     let target_angle = (target.1 - parent_start.1).atan2(target.0 - parent_start.0);
     let bend = if bend >= 0.0 { 1.0 } else { -1.0 };
     let parent_delta = target_angle + bend * beta - parent_angle;
-    let child_delta = bend * (std::f64::consts::PI - gamma) + parent_angle - child_angle;
+    let child_delta = -bend * (std::f64::consts::PI - gamma) + parent_angle - child_angle;
     (parent_delta.to_degrees(), child_delta.to_degrees())
 }
 
