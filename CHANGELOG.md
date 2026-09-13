@@ -4,6 +4,7 @@
 
 ### Animation
 
+- Fixed planted-contact two-bone IK so bent limb chains close onto the target instead of kicking away from it.
 - Rig-only `/animate` resolves the master from the selected sprite or an `assets/...` path in the prompt; `/animate` without a resolvable master shows an explicit error instead of starting a new-character master pass.
 - Phase-two native rig continuation picks the fresh manifest `source` (or newest character asset) instead of the first scanned character in the workspace.
 - Motion dialog and Animate tab link to existing SQLite rigs; legacy workspace mask-rig JSON can be revealed from the Animate editor.

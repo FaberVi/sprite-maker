@@ -68,4 +68,6 @@ pub(crate) use render_frame::render_frame;
 #[cfg(test)]
 mod deform_tests;
 #[cfg(test)]
+mod ik_tests;
+#[cfg(test)]
 mod tests;
