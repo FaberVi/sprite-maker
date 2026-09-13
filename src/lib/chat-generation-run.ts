@@ -7,7 +7,8 @@ import {
   shouldAttachSpriteCard, shouldSaveGeneratedAnimation, spriteCardForOrderedAssets, stripFrameSuffix,
 } from "$lib/chat-generation-finalize";
 import { assetsFromManifestPaths, findAnimationWithOrderedFrames, latestCompletedAssistant } from "$lib/generation-reconcile";
-import { normalizeManifestPath } from "$lib/manifest-path";
+import { reportsGenerationFailure } from "$lib/message-generations";
+import { extractAssetPathsFromResponse, normalizeManifestPath } from "$lib/manifest-path";
 import {
   extractAnimateMotion, formatBlockingQualityNotice, orchestrateRigOnlyAnimation,
   resolveLatestCharacterAsset, resolveMasterFromManifest, validatePolishedFrame,
@@ -483,10 +484,16 @@ export async function completeChatGeneration(
     }
   }
   const generatedAssets = freshManifest ? await api.scanGenerationAssets(request.workspaceId) : [];
-  const nextAssets = mergeGeneratedAssets(current.assets, generatedAssets);
+  let nextAssets = mergeGeneratedAssets(current.assets, generatedAssets);
   const nextPacks = await api.listAssetPacks(request.workspaceId).catch(() => current.packs);
   const generatedPack = findGeneratedPack(request.command, nextPacks, request.knownPackIds, response);
-  const manifestAssets = freshManifest && manifest ? assetsFromManifestPaths(nextAssets, manifest.files) : [];
+  let manifestAssets = freshManifest && manifest ? assetsFromManifestPaths(nextAssets, manifest.files) : [];
+  const responseAssetPaths = extractAssetPathsFromResponse(response);
+  if (!manifestAssets.length && !reportsGenerationFailure(response) && responseAssetPaths.length) {
+    const scanned = await api.scanAssets(request.workspaceId);
+    nextAssets = mergeGeneratedAssets(current.assets, scanned);
+    manifestAssets = assetsFromManifestPaths(nextAssets, responseAssetPaths);
+  }
   const rejectedStatic = isRejectedStaticAnimation(request.command, manifestAssets);
   const acceptedManifestAssets = rejectedStatic ? [] : manifestAssets;
   const manifestFps = manifestPlaybackFps(manifest, request.generation.fps);
