@@ -144,5 +144,10 @@ mod tests {
             inject_python_commands(bare, &launcher),
             "run py -3 .sprite-studio/sprite_rig.py rig.json"
         );
+        let mixed = "python3 .sprite-studio/sprite_tool.py a.json then python .sprite-studio/sprite_rig.py b.json";
+        assert_eq!(
+            inject_python_commands(mixed, &launcher),
+            "py -3 .sprite-studio/sprite_tool.py a.json then py -3 .sprite-studio/sprite_rig.py b.json"
+        );
     }
 }
