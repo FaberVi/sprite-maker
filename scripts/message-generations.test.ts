@@ -73,6 +73,19 @@ describe("inferMessageGeneration", () => {
     expect(result?.name).toBe("astral_cartographer");
   });
 
+  test("binds every mentioned static asset when no animation frames match", () => {
+    const mushroom = asset("m1", "forest_mushroom_red");
+    const stump = asset("s1", "forest_stump_mossy");
+    const result = inferMessageGeneration(
+      message("Saved forest_mushroom_red and forest_stump_mossy as separate props."),
+      [mushroom, stump],
+      [],
+    );
+    expect(result?.assetIds).toEqual(["m1", "s1"]);
+    expect(result?.animationId).toBeUndefined();
+    expect(result?.fps).toBe(1);
+  });
+
   test("keeps the best artifact when generation completes with a warning", () => {
     const warned = message("Published the best valid lion gallop. GENERATION_WARNING: minor top-down anatomy seam remains.");
     warned.metadata = { generation: { kind: "sprite-generation", name: "lion-gallop", category: "creatures", fps: 10, assetIds: ["lion"] } };

@@ -3,8 +3,9 @@ import {
   type ActiveChatRequest, type GenerationViewHandoff, animationFrameAssets, buildFullRedrawPrompt,
   buildProviderOptions, buildRigPolishPrompt, conversationTitleFromPrompt, findGeneratedPack,
   generationViewHandoff, isFreshGenerationManifest, isRejectedStaticAnimation, manifestPlaybackFps,
-  mergeGeneratedAssets, orderedGenerationAssets, packGenerationCard, relatedGenerationAssets,
-  shouldAttachSpriteCard, shouldSaveGeneratedAnimation, spriteCardForOrderedAssets, stripFrameSuffix,
+  mergeAssistantGenerationMetadata, mergeGeneratedAssets, orderedGenerationAssets, packGenerationCard,
+  relatedGenerationAssets, shouldAttachSpriteCard, shouldSaveGeneratedAnimation, spriteCardForOrderedAssets,
+  stripFrameSuffix,
 } from "$lib/chat-generation-finalize";
 import { assetsFromManifestPaths, findAnimationWithOrderedFrames, latestCompletedAssistant } from "$lib/generation-reconcile";
 import { reportsGenerationFailure } from "$lib/message-generations";
@@ -494,7 +495,7 @@ export async function completeChatGeneration(
   const generationFailed = reportsGenerationFailure(response);
   if (shouldRecoverAssetsFromResponse(manifestAssets.length, response, generationFailed)) {
     const scanned = await api.scanAssets(request.workspaceId);
-    nextAssets = mergeGeneratedAssets(current.assets, scanned);
+    nextAssets = mergeGeneratedAssets(nextAssets, scanned);
     manifestAssets = assetsFromManifestPaths(nextAssets, responseAssetPaths);
   }
   const rejectedStatic = isRejectedStaticAnimation(request.command, manifestAssets);
@@ -527,17 +528,12 @@ export async function completeChatGeneration(
     const requestMessages = await api.listMessages(request.conversationId);
     const assistant = latestCompletedAssistant(requestMessages);
     if (assistant) {
-      let metadata = { ...assistant.metadata };
-      if (attachSpriteCard) {
-        metadata = {
-          ...metadata,
-          generation: spriteCardForOrderedAssets(ordered, manifestFps, animationId),
-        };
-      }
-      if (generatedPack) {
-        metadata = { ...metadata, packGeneration: packGenerationCard(generatedPack.id) };
-      }
-      await api.updateMessageMetadata(assistant.id, metadata);
+      await api.updateMessageMetadata(assistant.id, mergeAssistantGenerationMetadata(assistant.metadata, {
+        generation: attachSpriteCard
+          ? spriteCardForOrderedAssets(ordered, manifestFps, animationId)
+          : undefined,
+        packGeneration: generatedPack ? packGenerationCard(generatedPack.id) : undefined,
+      }));
     }
   }
   const rigs = await api.listRigs(request.workspaceId, request.worktreeId).catch(() => current.rigs);

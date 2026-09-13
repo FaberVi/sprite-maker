@@ -255,6 +255,20 @@ export function packGenerationCard(packId: string): PackGenerationMetadata {
   return { kind: "pack-generation", packId };
 }
 
+/** Merge sprite and/or pack generation cards onto assistant metadata in one write. */
+export function mergeAssistantGenerationMetadata(
+  existing: Record<string, unknown>,
+  input: {
+    generation?: ReturnType<typeof spriteCardForOrderedAssets>;
+    packGeneration?: PackGenerationMetadata;
+  },
+): Record<string, unknown> {
+  let metadata = { ...existing };
+  if (input.generation) metadata = { ...metadata, generation: input.generation };
+  if (input.packGeneration) metadata = { ...metadata, packGeneration: input.packGeneration };
+  return metadata;
+}
+
 /** Which studio tab should open after a completed generation. */
 export function generationViewHandoff(input: {
   selectedConversationId?: string;
