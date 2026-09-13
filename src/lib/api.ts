@@ -1,11 +1,12 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Animation, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, Conversation, ExportResult, FrameOptimizationResult, GenerationManifest, ImageProviderInput, Message, MotionPlan, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, QualityReport, ReferenceCategory, ReferenceImage, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SidebarSnapshot, SpriteSheet, SpriteSheetInput, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind, WorkspaceRigSpec } from "$lib/types";
+import type { Animation, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, Conversation, ExportResult, FrameOptimizationResult, GenerationManifest, ImageProviderInput, Message, MotionPlan, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, PythonRuntimeStatus, QualityReport, ReferenceCategory, ReferenceImage, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SidebarSnapshot, SpriteSheet, SpriteSheetInput, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind, WorkspaceRigSpec } from "$lib/types";
 
 export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
   loadSidebarState: (workspaceId?: string) => invoke<SidebarSnapshot>("load_sidebar_state", { workspaceId: workspaceId ?? null }),
   createWorkspace: (name: string, path: string) => invoke<Workspace>("create_workspace", { name, path }),
   openWorkspace: (path: string) => invoke<Workspace>("open_workspace", { path }),
+  checkPythonRuntime: () => invoke<PythonRuntimeStatus>("check_python_runtime"),
   touchWorkspace: (id: string) => invoke<Workspace>("touch_workspace", { id }),
   renameWorkspace: (id: string, name: string) => invoke<void>("rename_workspace", { id, name }),
   removeWorkspace: (id: string) => invoke<void>("remove_workspace", { id }),

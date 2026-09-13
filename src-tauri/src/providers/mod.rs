@@ -10,6 +10,7 @@ mod external_source;
 mod headless;
 mod image_providers;
 mod modes;
+mod probes;
 mod prompt;
 mod run;
 mod stream;
@@ -55,7 +56,7 @@ use modes::{antigravity_modes_from_text, cursor_auth_from_status_json};
 #[cfg(test)]
 use stream::{
     append_stream_text, parse_codex_line, parse_stream_line, provider_failure_message,
-    response_reports_generation_failure,
+    response_reports_generation_failure, with_optional_auth_hint,
 };
 
 #[cfg(all(test, unix))]

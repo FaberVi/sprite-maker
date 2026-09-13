@@ -1,7 +1,7 @@
 use super::{
     append_stream_text, codex_arguments, parse_codex_line, parse_stream_line, provider_arguments,
     provider_failure_message, provider_stdin_bytes, response_reports_generation_failure,
-    validate_provider_options,
+    validate_provider_options, with_optional_auth_hint,
 };
 use crate::models::{GenerationOptions, ProviderRequestOptions};
 use std::path::Path;
@@ -40,6 +40,23 @@ fn represents_transient_provider_errors_as_activity() {
         activity.as_deref(),
         Some("Connection interrupted; recovering — resume payload is invalid")
     );
+}
+
+#[test]
+fn auth_keyword_appends_help_without_dropping_original() {
+    let message = with_optional_auth_hint(
+        "claude",
+        "Sprite Studio's tool runner was unavailable during login probe",
+    );
+    assert!(message.contains("tool runner was unavailable"));
+    assert!(message.contains("If this looks like a sign-in problem"));
+    assert!(message.contains("claude auth login"));
+}
+
+#[test]
+fn non_auth_failure_is_unchanged() {
+    let message = with_optional_auth_hint("codex", "resume payload is invalid");
+    assert_eq!(message, "resume payload is invalid");
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use super::stream::{
-    emit, provider_auth_help, provider_display_name, provider_failure_message,
-    response_reports_generation_failure,
+    emit, provider_display_name, provider_failure_message, response_reports_generation_failure,
+    with_optional_auth_hint,
 };
 use crate::{
     conversations::{get_conversation, update_message},
@@ -96,16 +96,15 @@ pub(crate) fn finish_provider_run(args: FinishProviderRun<'_>) {
             }
         }
         Ok(exit) => {
-            let mut message =
-                provider_failure_message(provider_id, &exit.to_string(), stderr_output, &response);
-            let lower = message.to_lowercase();
-            if lower.contains("auth")
-                || lower.contains("login")
-                || lower.contains("credential")
-                || lower.contains("api key")
-            {
-                message = provider_auth_help(provider_id);
-            }
+            let message = with_optional_auth_hint(
+                provider_id,
+                &provider_failure_message(
+                    provider_id,
+                    &exit.to_string(),
+                    stderr_output,
+                    &response,
+                ),
+            );
             let _ = update_message(state, assistant_id, &message, "failed");
             emit(app, state, request_id, conversation_id, "failed", message);
         }

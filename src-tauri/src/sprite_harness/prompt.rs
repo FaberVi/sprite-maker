@@ -1,4 +1,8 @@
-use crate::{models::GenerationOptions, motion_planner::build_motion_plan};
+use crate::{
+    models::GenerationOptions,
+    motion_planner::build_motion_plan,
+    workspace::{inject_python_commands, launcher_command_line, resolve_python_launcher},
+};
 
 use super::routing::{
     asset_identity_context, explicit_count, explicit_size, has_explicit_asset_subject, infer_brief,
@@ -359,14 +363,34 @@ pub fn studio_prompt(
     )
 }
 
-fn apply_native_image_contract(prompt: String, agent_provider: Option<&str>) -> String {
-    let (heading, contract) = match agent_provider {
-        Some("cursor") => ("CURSOR IMAGE CONTRACT", CURSOR_IMAGE_CONTRACT),
-        Some("antigravity") => ("ANTIGRAVITY IMAGE CONTRACT", ANTIGRAVITY_IMAGE_CONTRACT),
-        _ => return prompt,
-    };
-    match prompt.split_once("\n\n") {
-        Some((opening, rest)) => format!("{opening}\n\n{heading}\n{contract}\n\n{rest}"),
-        None => format!("{prompt}\n\n{heading}\n{contract}"),
+fn apply_python_runtime(prompt: String) -> String {
+    match resolve_python_launcher() {
+        Some(launcher) => {
+            let command = launcher_command_line(&launcher);
+            let injected = inject_python_commands(&prompt, &launcher);
+            format!(
+                "WORKSPACE PYTHON RUNTIME\nRun bundled scripts with `{command} .sprite-studio/<script>.py` (not bare `python3` on Windows).\n\n{injected}"
+            )
+        }
+        None => format!(
+            "WORKSPACE PYTHON RUNTIME\nPython 3 is not available on PATH. Install CPython from python.org or ensure `py -3` works before running `.sprite-studio/sprite_tool.py` or `sprite_rig.py`.\n\n{prompt}"
+        ),
     }
+}
+
+fn apply_native_image_contract(prompt: String, agent_provider: Option<&str>) -> String {
+    let merged = match agent_provider {
+        Some("cursor") | Some("antigravity") => {
+            let (heading, contract) = match agent_provider {
+                Some("cursor") => ("CURSOR IMAGE CONTRACT", CURSOR_IMAGE_CONTRACT),
+                _ => ("ANTIGRAVITY IMAGE CONTRACT", ANTIGRAVITY_IMAGE_CONTRACT),
+            };
+            match prompt.split_once("\n\n") {
+                Some((opening, rest)) => format!("{opening}\n\n{heading}\n{contract}\n\n{rest}"),
+                None => format!("{prompt}\n\n{heading}\n{contract}"),
+            }
+        }
+        _ => prompt,
+    };
+    apply_python_runtime(merged)
 }

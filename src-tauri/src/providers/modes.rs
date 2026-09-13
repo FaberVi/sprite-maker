@@ -1,19 +1,11 @@
-use super::discovery::{
-    isolate_login_shell, login_shell_state, provider_process_path, stop_login_shell,
-    LoginShellState,
-};
+use super::discovery::provider_process_path;
 use super::headless::apply_std_headless_flags;
+use super::probes::{
+    command_output, probe_failure_detail, AuthCheck, ProbeOutcome,
+};
 use crate::models::ProviderMode;
 use serde::Deserialize;
-use std::{
-    env,
-    fs::{self, OpenOptions},
-    path::Path,
-    process::{Command as StdCommand, Stdio},
-    thread,
-    time::{Duration, Instant},
-};
-use uuid::Uuid;
+use std::{env, fs, path::Path, process::Command as StdCommand};
 
 #[derive(Debug, Deserialize)]
 struct CodexModelCatalog {
@@ -68,66 +60,6 @@ pub(crate) fn codex_modes(executable: &Path) -> Vec<ProviderMode> {
                 .collect(),
         })
         .collect()
-}
-
-pub(crate) fn command_output(
-    provider_id: &str,
-    executable: &Path,
-    arguments: &[&str],
-) -> Option<std::process::Output> {
-    const PROBE_TIMEOUT: Duration = Duration::from_secs(4);
-    let token = Uuid::new_v4();
-    let stdout_path = env::temp_dir().join(format!("sprite-studio-provider-{token}.out"));
-    let stderr_path = env::temp_dir().join(format!("sprite-studio-provider-{token}.err"));
-    let result = (|| {
-        let stdout = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&stdout_path)
-            .ok()?;
-        let stderr = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&stderr_path)
-            .ok()?;
-        let mut command = StdCommand::new(executable);
-        command
-            .args(arguments)
-            .env("PATH", provider_process_path(provider_id))
-            .stdin(Stdio::null())
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr));
-        // Provider CLIs can leave helper processes alive after the command that
-        // launched them exits. Keep every read-only probe in its own group so a
-        // timeout cleans up the whole probe without touching a real generation.
-        isolate_login_shell(&mut command);
-        apply_std_headless_flags(&mut command);
-        let mut child = command.spawn().ok()?;
-        let deadline = Instant::now() + PROBE_TIMEOUT;
-        let status = loop {
-            match login_shell_state(&mut child) {
-                LoginShellState::Exited => break stop_login_shell(&mut child, true)?,
-                LoginShellState::Running => {}
-                LoginShellState::Error => {
-                    let _ = stop_login_shell(&mut child, false);
-                    return None;
-                }
-            }
-            if Instant::now() >= deadline {
-                let _ = stop_login_shell(&mut child, false);
-                return None;
-            }
-            thread::sleep(Duration::from_millis(10));
-        };
-        Some(std::process::Output {
-            status,
-            stdout: fs::read(&stdout_path).unwrap_or_default(),
-            stderr: fs::read(&stderr_path).unwrap_or_default(),
-        })
-    })();
-    let _ = fs::remove_file(stdout_path);
-    let _ = fs::remove_file(stderr_path);
-    result
 }
 
 fn cursor_api_key_configured() -> bool {
@@ -218,36 +150,84 @@ fn cursor_is_authenticated(output: &std::process::Output) -> bool {
     false
 }
 
-pub(crate) fn provider_is_authenticated(id: &str, executable: &Path) -> bool {
+pub(crate) fn check_provider_auth(id: &str, executable: &Path) -> AuthCheck {
     match id {
-        "codex" => command_output(id, executable, &["login", "status"])
-            .is_some_and(|output| output.status.success()),
-        "claude" => command_output(id, executable, &["auth", "status", "--json"])
-            .filter(|output| output.status.success())
-            .and_then(|output| serde_json::from_slice::<serde_json::Value>(&output.stdout).ok())
-            .and_then(|value| value.get("loggedIn").and_then(|value| value.as_bool()))
-            .unwrap_or(false),
+        "codex" => match command_output(id, executable, &["login", "status"]) {
+            ProbeOutcome::Ran(output) if output.status.success() => AuthCheck::Authenticated,
+            ProbeOutcome::Ran(_) => AuthCheck::NotLoggedIn,
+            ProbeOutcome::Failed(failure) => AuthCheck::ProbeFailed {
+                detail: probe_failure_detail(id, executable, &["login", "status"], &failure),
+            },
+        },
+        "claude" => match command_output(id, executable, &["auth", "status", "--json"]) {
+            ProbeOutcome::Ran(output) if output.status.success() => {
+                let logged_in = serde_json::from_slice::<serde_json::Value>(&output.stdout)
+                    .ok()
+                    .and_then(|value| value.get("loggedIn").and_then(|value| value.as_bool()))
+                    .unwrap_or(false);
+                if logged_in {
+                    AuthCheck::Authenticated
+                } else {
+                    AuthCheck::NotLoggedIn
+                }
+            }
+            ProbeOutcome::Ran(_) => AuthCheck::NotLoggedIn,
+            ProbeOutcome::Failed(failure) => AuthCheck::ProbeFailed {
+                detail: probe_failure_detail(
+                    id,
+                    executable,
+                    &["auth", "status", "--json"],
+                    &failure,
+                ),
+            },
+        },
         "cursor" => {
             if cursor_api_key_configured() {
-                return true;
+                return AuthCheck::Authenticated;
             }
             match command_output(id, executable, &["status", "--format", "json"]) {
-                Some(output) => cursor_is_authenticated(&output),
-                None => command_output(id, executable, &["status"])
-                    .is_some_and(|output| cursor_is_authenticated(&output)),
+                ProbeOutcome::Ran(output) if cursor_is_authenticated(&output) => {
+                    AuthCheck::Authenticated
+                }
+                ProbeOutcome::Ran(_) => match command_output(id, executable, &["status"]) {
+                    ProbeOutcome::Ran(output) if cursor_is_authenticated(&output) => {
+                        AuthCheck::Authenticated
+                    }
+                    ProbeOutcome::Ran(_) => AuthCheck::NotLoggedIn,
+                    ProbeOutcome::Failed(failure) => AuthCheck::ProbeFailed {
+                        detail: probe_failure_detail(id, executable, &["status"], &failure),
+                    },
+                },
+                ProbeOutcome::Failed(failure) => AuthCheck::ProbeFailed {
+                    detail: probe_failure_detail(
+                        id,
+                        executable,
+                        &["status", "--format", "json"],
+                        &failure,
+                    ),
+                },
             }
         }
-        // `models` is a read-only command which requires an authenticated Grok
-        // session. It provides a stronger signal than checking credential files.
-        "grok" => command_output(id, executable, &["models"])
-            .is_some_and(|output| output.status.success()),
-        "antigravity" => command_output(id, executable, &["models"])
-            .is_some_and(|output| output.status.success()),
-        // Gemini has no stable auth-status command. Treat configured credentials
-        // as authenticated and defer the final check to the first headless run.
-        "gemini" => gemini_credentials_available(),
-        _ => false,
+        "grok" | "antigravity" => match command_output(id, executable, &["models"]) {
+            ProbeOutcome::Ran(output) if output.status.success() => AuthCheck::Authenticated,
+            ProbeOutcome::Ran(_) => AuthCheck::NotLoggedIn,
+            ProbeOutcome::Failed(failure) => AuthCheck::ProbeFailed {
+                detail: probe_failure_detail(id, executable, &["models"], &failure),
+            },
+        },
+        "gemini" => {
+            if gemini_credentials_available() {
+                AuthCheck::Authenticated
+            } else {
+                AuthCheck::NotLoggedIn
+            }
+        }
+        _ => AuthCheck::NotLoggedIn,
     }
+}
+
+pub(crate) fn provider_is_authenticated(id: &str, executable: &Path) -> bool {
+    matches!(check_provider_auth(id, executable), AuthCheck::Authenticated)
 }
 
 pub(crate) fn cursor_modes_from_output(output: &std::process::Output) -> Vec<ProviderMode> {

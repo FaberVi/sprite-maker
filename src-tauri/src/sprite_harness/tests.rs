@@ -214,7 +214,8 @@ fn terrain_objects_do_not_become_tileset_atlases() {
 #[test]
 fn prompt_embeds_renderer_and_originality_rules() {
     let prompt = studio_prompt("make a potion icon", None, None, None, None, false);
-    assert!(prompt.contains("python3 .sprite-studio/sprite_tool.py"));
+    assert!(prompt.contains(".sprite-studio/sprite_tool.py"));
+    assert!(prompt.contains("WORKSPACE PYTHON RUNTIME"));
     assert!(prompt.contains("original design"));
     assert!(prompt.ends_with("make a potion icon"));
 }

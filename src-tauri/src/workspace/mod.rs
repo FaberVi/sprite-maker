@@ -11,7 +11,13 @@ use uuid::Uuid;
 
 mod bundled;
 mod polish;
+mod python;
 use bundled::initialize_workspace;
+
+pub use python::{
+    __cmd__check_python_runtime, __tauri_command_name_check_python_runtime, check_python_runtime,
+};
+pub(crate) use python::{inject_python_commands, launcher_command_line, resolve_python_launcher};
 
 pub use polish::{
     __cmd__archive_sprite_paths, __cmd__restore_sprite_paths, __cmd__run_sprite_polish,

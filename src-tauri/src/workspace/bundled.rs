@@ -1,4 +1,5 @@
 use crate::error::CommandResult;
+use super::python::{resolve_python_launcher, write_python_launcher_sidecar};
 use std::path::Path;
 
 pub(super) const BUNDLED_PYTHON: &[(&str, &str)] = &[
@@ -101,6 +102,9 @@ pub(super) fn initialize_workspace(path: &Path) -> CommandResult<()> {
         if !installed.exists() || std::fs::read_to_string(&installed)? != bundled {
             std::fs::write(installed, bundled)?;
         }
+    }
+    if let Some(launcher) = resolve_python_launcher() {
+        write_python_launcher_sidecar(&metadata, &launcher)?;
     }
     Ok(())
 }
