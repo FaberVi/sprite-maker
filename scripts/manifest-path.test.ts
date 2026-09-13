@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { extractAssetPathsFromResponse, findAssetByManifestPath, manifestPathsMatch, normalizeManifestPath } from "../src/lib/manifest-path";
+import {
+  extractAssetPathsFromResponse, findAssetByManifestPath, manifestPathsMatch, normalizeManifestPath,
+  shouldRecoverAssetsFromResponse,
+} from "../src/lib/manifest-path";
 import type { Asset } from "../src/lib/types";
 
 const asset = (relativePath: string): Asset => ({
@@ -33,5 +36,13 @@ describe("manifest path normalization", () => {
     const response = "Saved assets/characters/astral_cartographer.png.\n\n[Preview](assets/characters/astral_cartographer.png)";
     expect(extractAssetPathsFromResponse(response)).toEqual(["assets/characters/astral_cartographer.png"]);
     expect(extractAssetPathsFromResponse("Wrote assets\\characters\\knight.png on Windows.")).toEqual(["assets/characters/knight.png"]);
+  });
+
+  test("requests asset recovery only when the manifest missed cited output paths", () => {
+    const response = "Saved assets/characters/knight.png.";
+    expect(shouldRecoverAssetsFromResponse(0, response, false)).toBe(true);
+    expect(shouldRecoverAssetsFromResponse(1, response, false)).toBe(false);
+    expect(shouldRecoverAssetsFromResponse(0, response, true)).toBe(false);
+    expect(shouldRecoverAssetsFromResponse(0, "Done.", false)).toBe(false);
   });
 });

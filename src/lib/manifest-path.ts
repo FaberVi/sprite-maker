@@ -29,3 +29,14 @@ export function extractAssetPathsFromResponse(response: string): string[] {
   }
   return [...paths];
 }
+
+/** True when chat completion should rescan assets cited in the provider response. */
+export function shouldRecoverAssetsFromResponse(
+  manifestAssetCount: number,
+  response: string,
+  generationFailed: boolean,
+): boolean {
+  return manifestAssetCount === 0
+    && !generationFailed
+    && extractAssetPathsFromResponse(response).length > 0;
+}

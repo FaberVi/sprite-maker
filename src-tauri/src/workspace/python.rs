@@ -68,7 +68,9 @@ pub fn launcher_command_line(launcher: &PythonLauncher) -> String {
 
 pub fn inject_python_commands(text: &str, launcher: &PythonLauncher) -> String {
     let prefix = launcher_command_line(launcher);
-    text.replace("python3 .sprite-studio/", &format!("{prefix} .sprite-studio/"))
+    let replacement = format!("{prefix} .sprite-studio/");
+    text.replace("python3 .sprite-studio/", &replacement)
+        .replace("python .sprite-studio/", &replacement)
 }
 
 pub(crate) fn write_python_launcher_sidecar(
@@ -136,6 +138,11 @@ mod tests {
         assert_eq!(
             inject_python_commands(text, &launcher),
             "run py -3 .sprite-studio/sprite_tool.py spec.json"
+        );
+        let bare = "run python .sprite-studio/sprite_rig.py rig.json";
+        assert_eq!(
+            inject_python_commands(bare, &launcher),
+            "run py -3 .sprite-studio/sprite_rig.py rig.json"
         );
     }
 }
