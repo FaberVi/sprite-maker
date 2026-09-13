@@ -14,7 +14,9 @@ import type {
   SpriteSlashCommand,
   Worktree,
 } from "$lib/types";
-import { spriteGenerationCard } from "$lib/generation-reconcile";
+import { spriteGenerationCard, stripFrameSuffix } from "$lib/generation-reconcile";
+
+export { stripFrameSuffix } from "$lib/generation-reconcile";
 import {
   type GenerationActivityEntry,
   type GenerationActivityLevel,
@@ -227,11 +229,6 @@ export function orderedGenerationAssets(acceptedManifestAssets: Asset[], related
   return acceptedManifestAssets.length
     ? [...related]
     : [...related].sort((a, b) => a.relativePath.localeCompare(b.relativePath, undefined, { numeric: true }));
-}
-
-/** Strip a trailing `_01` / `-02` frame suffix from a generated sprite name. */
-export function stripFrameSuffix(name: string): string {
-  return name.replace(/[_-]?\d+$/i, "");
 }
 
 /** Multi-frame non-pack generations should become looping animations. */

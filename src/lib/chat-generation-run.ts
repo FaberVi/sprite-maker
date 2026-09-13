@@ -8,7 +8,9 @@ import {
 } from "$lib/chat-generation-finalize";
 import { assetsFromManifestPaths, findAnimationWithOrderedFrames, latestCompletedAssistant } from "$lib/generation-reconcile";
 import { reportsGenerationFailure } from "$lib/message-generations";
-import { extractAssetPathsFromResponse, normalizeManifestPath } from "$lib/manifest-path";
+import {
+  extractAssetPathsFromResponse, normalizeManifestPath, shouldRecoverAssetsFromResponse,
+} from "$lib/manifest-path";
 import {
   extractAnimateMotion, formatBlockingQualityNotice, orchestrateRigOnlyAnimation,
   resolveLatestCharacterAsset, resolveMasterFromManifest, validatePolishedFrame,
@@ -489,7 +491,8 @@ export async function completeChatGeneration(
   const generatedPack = findGeneratedPack(request.command, nextPacks, request.knownPackIds, response);
   let manifestAssets = freshManifest && manifest ? assetsFromManifestPaths(nextAssets, manifest.files) : [];
   const responseAssetPaths = extractAssetPathsFromResponse(response);
-  if (!manifestAssets.length && !reportsGenerationFailure(response) && responseAssetPaths.length) {
+  const generationFailed = reportsGenerationFailure(response);
+  if (shouldRecoverAssetsFromResponse(manifestAssets.length, response, generationFailed)) {
     const scanned = await api.scanAssets(request.workspaceId);
     nextAssets = mergeGeneratedAssets(current.assets, scanned);
     manifestAssets = assetsFromManifestPaths(nextAssets, responseAssetPaths);
@@ -519,15 +522,23 @@ export async function completeChatGeneration(
       void api.queueQualityAnalysis(createdAnimation.id).catch(() => undefined);
     }
   }
-  if (shouldAttachSpriteCard(request.command, ordered)) {
+  const attachSpriteCard = shouldAttachSpriteCard(request.command, ordered);
+  if (attachSpriteCard || generatedPack) {
     const requestMessages = await api.listMessages(request.conversationId);
     const assistant = latestCompletedAssistant(requestMessages);
-    if (assistant) await api.updateMessageMetadata(assistant.id, { ...assistant.metadata, generation: spriteCardForOrderedAssets(ordered, manifestFps, animationId) });
-  }
-  if (generatedPack) {
-    const requestMessages = await api.listMessages(request.conversationId);
-    const assistant = latestCompletedAssistant(requestMessages);
-    if (assistant) await api.updateMessageMetadata(assistant.id, { ...assistant.metadata, packGeneration: packGenerationCard(generatedPack.id) });
+    if (assistant) {
+      let metadata = { ...assistant.metadata };
+      if (attachSpriteCard) {
+        metadata = {
+          ...metadata,
+          generation: spriteCardForOrderedAssets(ordered, manifestFps, animationId),
+        };
+      }
+      if (generatedPack) {
+        metadata = { ...metadata, packGeneration: packGenerationCard(generatedPack.id) };
+      }
+      await api.updateMessageMetadata(assistant.id, metadata);
+    }
   }
   const rigs = await api.listRigs(request.workspaceId, request.worktreeId).catch(() => current.rigs);
   const worktreeMatches = current.selectedWorktreeId === request.worktreeId;

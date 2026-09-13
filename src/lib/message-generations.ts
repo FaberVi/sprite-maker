@@ -1,5 +1,4 @@
-import { stripFrameSuffix } from "$lib/chat-generation-finalize";
-import { spriteGenerationCard } from "$lib/generation-reconcile";
+import { spriteGenerationCard, stripFrameSuffix } from "$lib/generation-reconcile";
 import { extractAssetPathsFromResponse, findAssetByManifestPath } from "$lib/manifest-path";
 import type { Animation, Asset, AssetPack, Message, PackGenerationMetadata, SpriteGenerationMetadata } from "$lib/types";
 
@@ -114,13 +113,12 @@ export function inferMessageGeneration(message: Message, assets: Asset[], animat
   }
 
   const first = mentionedAssets[0];
-  return {
-    kind: "sprite-generation",
-    name: first.name,
-    category: first.category,
-    fps: 1,
-    assetIds: [first.id],
-  };
+  return spriteGenerationCard(
+    mentionedAssets,
+    stripFrameSuffix(first.name),
+    first.category,
+    1,
+  );
 }
 
 export function inferMessagePack(message: Message, packs: AssetPack[]): { pack: AssetPack; metadata: PackGenerationMetadata } | undefined {

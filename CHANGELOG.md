@@ -38,7 +38,6 @@
 - Chat artifact cards prefer explicit `assets/...` output paths over stale animation-name inference when a new static sprite finishes.
 - Hid the empty console windows that flashed when Cursor CLI started bash tool processes.
 - Fixed deterministic rig rendering on Windows so `os.fsync` no longer uses a read-only handle (`Errno 9`).
- - Fixed planted-contact two-bone IK so bent limb chains close onto the target instead of kicking away from it.
 
 ## 0.3.2 — 2026-08-19
 
