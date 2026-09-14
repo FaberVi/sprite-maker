@@ -266,7 +266,7 @@ export async function continueNativeRigAfterMaster(
     masterResponse,
     parallelGenerationActive,
   )) return;
-  const scanned = await api.scanGenerationAssets(prior.workspaceId);
+  const scanned = await api.scanGenerationAssets(prior.workspaceId, worktreeId ?? prior.worktreeId);
   const master = resolveMasterFromManifest(manifest, scanned)
     ?? resolveLatestCharacterAsset(scanned);
   if (!master) return;
@@ -486,7 +486,7 @@ export async function completeChatGeneration(
       polishWarning = "AI polish finished but frame validation could not complete — review the animation frames.";
     }
   }
-  const generatedAssets = freshManifest ? await api.scanGenerationAssets(request.workspaceId) : [];
+  const generatedAssets = freshManifest ? await api.scanGenerationAssets(request.workspaceId, request.worktreeId) : [];
   let nextAssets = mergeGeneratedAssets(current.assets, generatedAssets);
   const nextPacks = await api.listAssetPacks(request.workspaceId).catch(() => current.packs);
   const generatedPack = findGeneratedPack(request.command, nextPacks, request.knownPackIds, response);
