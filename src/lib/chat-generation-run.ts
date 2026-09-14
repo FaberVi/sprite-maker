@@ -258,17 +258,28 @@ export async function continueNativeRigAfterMaster(
 ): Promise<{ completion: ChatGenerationCompletion; messages: Message[] } | undefined> {
   const manifest = await api.getGenerationManifest(prior.workspaceId).catch(() => null);
   const fingerprint = manifest ? await api.getGenerationFingerprint(prior.workspaceId).catch(() => null) : null;
-  if (!isFreshGenerationManifest(
+  const freshManifest = isFreshGenerationManifest(
     manifest,
     fingerprint,
     prior.previousGenerationFingerprint,
     prior.startedAt,
     masterResponse,
     parallelGenerationActive,
-  )) return;
-  const scanned = await api.scanGenerationAssets(prior.workspaceId);
-  const master = resolveMasterFromManifest(manifest, scanned)
-    ?? resolveLatestCharacterAsset(scanned);
+  );
+  let master: Asset | undefined;
+  if (freshManifest) {
+    const scanned = await api.scanGenerationAssets(prior.workspaceId);
+    master = resolveMasterFromManifest(manifest, scanned)
+      ?? resolveLatestCharacterAsset(scanned);
+  } else if (masterResponse && !reportsGenerationFailure(masterResponse)) {
+    // Keep the required native continuation/card working when a provider writes the
+    // final assets path but omits the manifest despite the handoff contract.
+    const responsePaths = extractAssetPathsFromResponse(masterResponse);
+    if (responsePaths.length) {
+      const scanned = await api.scanAssets(prior.workspaceId);
+      master = resolveLatestCharacterAsset(assetsFromManifestPaths(scanned, responsePaths));
+    }
+  }
   if (!master) return;
   const motion = prior.motion ?? extractAnimateMotion(prior.prompt);
   const profile = {

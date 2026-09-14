@@ -43,6 +43,18 @@ fn represents_transient_provider_errors_as_activity() {
 }
 
 #[test]
+fn preserves_recoverable_codex_item_error_detail_without_false_failure_label() {
+    let line = r#"{"type":"item.completed","item":{"type":"error","message":"Skill descriptions were shortened to fit the context budget."}}"#;
+    let (content, activity, _) = parse_codex_line(line);
+
+    assert!(content.is_none());
+    assert_eq!(
+        activity.as_deref(),
+        Some("Codex notice — Skill descriptions were shortened to fit the context budget.")
+    );
+}
+
+#[test]
 fn auth_keyword_appends_help_without_dropping_original() {
     let message = with_optional_auth_hint(
         "claude",
@@ -128,6 +140,16 @@ fn parses_gemini_assistant_messages() {
 
 #[test]
 fn builds_supported_headless_provider_arguments() {
+    let codex = provider_arguments("codex", None, None, None, &[], None);
+    let expected_codex_sandbox = if cfg!(windows) {
+        "danger-full-access"
+    } else {
+        "workspace-write"
+    };
+    assert!(codex
+        .windows(2)
+        .any(|pair| pair == ["--sandbox", expected_codex_sandbox]));
+
     let claude = provider_arguments("claude", None, Some("sonnet"), Some("high"), &[], None);
     assert!(claude
         .windows(2)
@@ -301,6 +323,11 @@ fn parses_antigravity_stream_json_deltas_tools_and_result() {
 
 #[test]
 fn resumes_a_persisted_codex_session() {
+    let sandbox_mode = if cfg!(windows) {
+        "danger-full-access"
+    } else {
+        "workspace-write"
+    };
     assert_eq!(
         codex_arguments(
             Some("session-123"),
@@ -311,7 +338,7 @@ fn resumes_a_persisted_codex_session() {
         [
             "exec",
             "--sandbox",
-            "workspace-write",
+            sandbox_mode,
             "resume",
             "--json",
             "--skip-git-repo-check",

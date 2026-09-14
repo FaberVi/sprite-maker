@@ -35,6 +35,9 @@
 
 ### Windows
 
+- Codex generation now bypasses the broken Windows workspace-sandbox helper so ImageGen masters can be saved and validated instead of ending in `GENERATION_FAILED`.
+- Recoverable Codex item notices retain their real message and no longer appear as the false terminal alert `error: error` while generation continues successfully.
+- Native-rig master generations now publish the accepted image under `assets/characters/` with a fresh generation manifest, while the app can recover from an explicitly reported asset path if the manifest is omitted, restoring the inline sprite component and automatic rig continuation.
 - Provider probes now distinguish spawn/timeout failures from real sign-in problems, retry once, and log to `%LOCALAPPDATA%\\com.jakes.sprite-maker\\logs\\provider-probes.log`.
 - Workspace initialization preflights Python (`py -3`, `python3`, or `python`), writes `.sprite-studio/python_launcher.json`, warns in Settings and after create/open when Python is missing, and injects the resolved command into generation prompts (including bare `python .sprite-studio/...` examples).
 - Provider failure messages keep the original error text and append auth help instead of replacing it.

@@ -63,6 +63,19 @@ pub(crate) fn parse_codex_line(line: &str) -> (Option<String>, Option<String>, O
                     None,
                 );
             }
+            if item_type == "error" {
+                let message = item
+                    .get("message")
+                    .or_else(|| item.get("error").and_then(|error| error.get("message")))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("Codex reported a recoverable issue");
+                // Item-level errors can be advisory (for example, a skills
+                // context-budget notice) and do not determine the process
+                // result. Preserve the useful detail without showing a false
+                // terminal generation failure; child.wait() remains the
+                // authority for whether the request failed.
+                return (None, Some(format!("Codex notice — {message}")), None);
+            }
             let label = item
                 .get("command")
                 .and_then(|value| value.as_str())

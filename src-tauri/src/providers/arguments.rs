@@ -137,11 +137,22 @@ pub(crate) fn codex_arguments(
     reasoning_effort: Option<&str>,
     reference_paths: &[String],
 ) -> Vec<String> {
+    // Codex's Windows workspace sandbox currently has a provisioning failure
+    // (`helper_unknown_error: setup refresh had errors`) that prevents every
+    // tool call, including copying an ImageGen result into the workspace. The
+    // other local CLI providers already run in trusted auto-edit modes, so use
+    // Codex's equivalent mode on Windows until the upstream helper is reliable.
+    // Keep the scoped workspace sandbox everywhere it is supported.
+    let sandbox_mode = if cfg!(windows) {
+        "danger-full-access"
+    } else {
+        "workspace-write"
+    };
     let mut arguments = if session_id.is_some() {
         vec![
             "exec".into(),
             "--sandbox".into(),
-            "workspace-write".into(),
+            sandbox_mode.into(),
             "resume".into(),
             "--json".into(),
             "--skip-git-repo-check".into(),
@@ -150,7 +161,7 @@ pub(crate) fn codex_arguments(
         vec![
             "exec".into(),
             "--sandbox".into(),
-            "workspace-write".into(),
+            sandbox_mode.into(),
             "--json".into(),
             "--skip-git-repo-check".into(),
         ]
