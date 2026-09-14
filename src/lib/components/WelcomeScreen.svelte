@@ -30,11 +30,19 @@
     }
   }
 
+  async function warnIfPythonMissing() {
+    try {
+      const runtime = await api.checkPythonRuntime();
+      if (!runtime.available) onError(runtime.detail);
+    } catch { /* ignore runtime probe failures */ }
+  }
+
   async function create() {
     if (!name.trim() || !path) return;
     busy = true;
     try {
       onCreated(await api.createWorkspace(name, path));
+      await warnIfPythonMissing();
       creating = false;
     } catch (error) { onError(errorMessage(error)); }
     finally { busy = false; }
@@ -43,7 +51,10 @@
   async function openExisting() {
     const selected = await open({ directory: true, multiple: false, title: "Open a Sprite Studio workspace" });
     if (typeof selected !== "string") return;
-    try { onCreated(await api.openWorkspace(selected)); }
+    try {
+      onCreated(await api.openWorkspace(selected));
+      await warnIfPythonMissing();
+    }
     catch (error) { onError(errorMessage(error)); }
   }
 

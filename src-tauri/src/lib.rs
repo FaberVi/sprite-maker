@@ -199,6 +199,7 @@ pub fn run() {
             workspace::load_sidebar_state,
             workspace::create_workspace,
             workspace::open_workspace,
+            workspace::check_python_runtime,
             workspace::run_sprite_polish,
             workspace::archive_sprite_paths,
             workspace::restore_sprite_paths,

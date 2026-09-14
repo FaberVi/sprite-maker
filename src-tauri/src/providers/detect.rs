@@ -1,9 +1,10 @@
 use super::discovery::find_executable;
 use super::image_providers::{image_provider_status, stored_image_providers, StoredImageProvider};
 use super::modes::{
-    antigravity_modes_from_output, codex_modes, command_output, cursor_modes_from_output,
-    grok_modes_from_output, provider_is_authenticated,
+    antigravity_modes_from_output, check_provider_auth, codex_modes, cursor_modes_from_output,
+    grok_modes_from_output,
 };
+use super::probes::{command_output, AuthCheck, ProbeOutcome};
 use crate::models::{ProviderCapabilities, ProviderStatus};
 use crate::AppState;
 use tauri::State;
@@ -30,15 +31,20 @@ pub(crate) fn detect_providers_inner(state: &AppState) -> Vec<ProviderStatus> {
         // take over a minute when its session or network is unhealthy. Probe it
         // once, with the same hard timeout as every other status command.
         // Antigravity uses the same `models` success check for auth.
-        let models_probe = matches!(id, "grok" | "antigravity")
-            .then(|| executable.as_deref().and_then(|path| command_output(id, path, &["models"])))
-            .flatten();
-        let authenticated = match (id, executable.as_deref()) {
-            ("grok" | "antigravity", Some(_)) => models_probe
-                .as_ref()
-                .is_some_and(|output| output.status.success()),
-            (_, Some(path)) => provider_is_authenticated(id, path),
-            (_, None) => false,
+        let auth_check = executable
+            .as_deref()
+            .map(|path| check_provider_auth(id, path))
+            .unwrap_or(AuthCheck::NotLoggedIn);
+        let authenticated = auth_check == AuthCheck::Authenticated;
+        let models_probe = if matches!(id, "grok" | "antigravity") {
+            executable
+                .as_deref()
+                .and_then(|path| match command_output(id, path, &["models"]) {
+                    ProbeOutcome::Ran(output) => Some(output),
+                    ProbeOutcome::Failed(_) => None,
+                })
+        } else {
+            None
         };
         let modes = match (id, executable.as_deref(), authenticated) {
             ("codex", Some(path), true) => codex_modes(path),
@@ -50,12 +56,13 @@ pub(crate) fn detect_providers_inner(state: &AppState) -> Vec<ProviderStatus> {
                 .as_ref()
                 .map(antigravity_modes_from_output)
                 .unwrap_or_default(),
-            ("cursor", Some(path), true) => command_output(id, path, &["models"])
-                .map(|output| cursor_modes_from_output(&output))
-                .unwrap_or_default(),
+            ("cursor", Some(path), true) => match command_output(id, path, &["models"]) {
+                ProbeOutcome::Ran(output) => cursor_modes_from_output(&output),
+                ProbeOutcome::Failed(_) => Vec::new(),
+            },
             _ => Vec::new(),
         };
-        let (status, detail) = match (id, installed, authenticated) {
+        let (status, detail) = match (id, installed, &auth_check) {
             (_, false, _) => (
                 "not_installed",
                 match id {
@@ -72,7 +79,7 @@ pub(crate) fn detect_providers_inner(state: &AppState) -> Vec<ProviderStatus> {
                     _ => "Install and authenticate this provider's CLI",
                 },
             ),
-            ("claude", true, true) => (
+            ("claude", true, AuthCheck::Authenticated) => (
                 "detected",
                 "CLI reports signed in. Claude validates the stored credentials on the first headless request; run `claude auth login` if that request returns 401.",
             ),
@@ -80,7 +87,8 @@ pub(crate) fn detect_providers_inner(state: &AppState) -> Vec<ProviderStatus> {
                 "detected",
                 "CLI detected. Authentication is verified by the first headless request.",
             ),
-            (_, true, false) => (
+            (_, true, AuthCheck::ProbeFailed { detail }) => ("probe_failed", detail.as_str()),
+            (_, true, AuthCheck::NotLoggedIn) => (
                 "needs_auth",
                 match id {
                     "codex" => "CLI detected, but `codex login status` did not confirm a session. Run `codex login`.",
@@ -91,7 +99,7 @@ pub(crate) fn detect_providers_inner(state: &AppState) -> Vec<ProviderStatus> {
                     _ => "CLI detected, but authentication could not be verified.",
                 },
             ),
-            (_, true, true) => (
+            (_, true, AuthCheck::Authenticated) => (
                 "ready",
                 match id {
                     "codex" => "Installed, authenticated, and ready for workspace conversations.",

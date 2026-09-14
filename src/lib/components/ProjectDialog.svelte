@@ -10,17 +10,20 @@
   let path = $state("");
   let busy = $state(false);
 
+  async function warnIfPythonMissing(){
+    try{const runtime=await api.checkPythonRuntime();if(!runtime.available)onError(runtime.detail);}catch{/* ignore runtime probe failures */}
+  }
   async function chooseDirectory(){
     const selected=await open({directory:true,multiple:false,title:mode==="create"?"Choose a project directory":"Open a Sprite Studio project"});
     if(typeof selected!=="string")return;
     if(mode==="open"){
       busy=true;
-      try{await onCreated(await api.openWorkspace(selected));onClose();}catch(error){onError(errorMessage(error));}finally{busy=false;}
+      try{await onCreated(await api.openWorkspace(selected));await warnIfPythonMissing();onClose();}catch(error){onError(errorMessage(error));}finally{busy=false;}
       return;
     }
     path=selected;if(!name)name=selected.split(/[\\/]/).filter(Boolean).at(-1)??"New project";
   }
-  async function create(){if(!name.trim()||!path)return;busy=true;try{await onCreated(await api.createWorkspace(name.trim(),path));onClose();}catch(error){onError(errorMessage(error));}finally{busy=false;}}
+  async function create(){if(!name.trim()||!path)return;busy=true;try{await onCreated(await api.createWorkspace(name.trim(),path));await warnIfPythonMissing();onClose();}catch(error){onError(errorMessage(error));}finally{busy=false;}}
 </script>
 
 <div class="backdrop" role="presentation" onclick={(event)=>event.target===event.currentTarget&&!busy&&onClose()}>

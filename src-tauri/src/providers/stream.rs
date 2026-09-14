@@ -108,6 +108,22 @@ pub(crate) fn provider_display_name(id: &str) -> &'static str {
     }
 }
 
+pub(crate) fn with_optional_auth_hint(provider_id: &str, message: &str) -> String {
+    let lower = message.to_lowercase();
+    if lower.contains("auth")
+        || lower.contains("login")
+        || lower.contains("credential")
+        || lower.contains("api key")
+    {
+        format!(
+            "{message}\n\nIf this looks like a sign-in problem: {}",
+            provider_auth_help(provider_id)
+        )
+    } else {
+        message.to_string()
+    }
+}
+
 pub(crate) fn provider_auth_help(id: &str) -> String {
     match id {
         "codex" => "Codex CLI is installed but not authenticated. Run `codex login`, then retry.".into(),

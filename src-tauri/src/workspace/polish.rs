@@ -1,6 +1,6 @@
 use crate::{
     error::{CommandError, CommandResult},
-    workspace::workspace_path,
+    workspace::{python::resolve_python_launcher, workspace_path},
     AppState,
 };
 use serde_json::Value;
@@ -9,19 +9,6 @@ use std::process::Stdio;
 use tauri::State;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
-
-fn python_launcher() -> (String, Vec<String>) {
-    if which::which("py").is_ok() {
-        return ("py".to_string(), vec!["-3".to_string()]);
-    }
-    if which::which("python3").is_ok() {
-        return ("python3".to_string(), Vec::new());
-    }
-    if which::which("python").is_ok() {
-        return ("python".to_string(), Vec::new());
-    }
-    ("python3".to_string(), Vec::new())
-}
 
 #[tauri::command]
 pub async fn run_sprite_polish(
@@ -44,10 +31,15 @@ pub async fn run_sprite_polish(
     let rough = workspace_relative_arg(&root, &rough)?;
     let input = workspace_relative_arg(&root, &input)?;
     let output = workspace_relative_arg(&root, &output)?;
-    let (executable, prefix_args) = python_launcher();
-    let mut command = Command::new(&executable);
+    let launcher = resolve_python_launcher().ok_or_else(|| {
+        CommandError::new(
+            "polish_python_missing",
+            crate::workspace::python::PYTHON_MISSING_DETAIL,
+        )
+    })?;
+    let mut command = Command::new(&launcher.program);
     command
-        .args(prefix_args)
+        .args(&launcher.args)
         .arg(&script)
         .arg("--master")
         .arg(&master)

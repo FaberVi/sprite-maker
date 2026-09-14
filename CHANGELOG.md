@@ -4,6 +4,7 @@
 
 ### Animation
 
+- Fixed planted-contact two-bone IK so bent limb chains close onto the target instead of kicking away from it.
 - Rig-only `/animate` resolves the master from the selected sprite or an `assets/...` path in the prompt; `/animate` without a resolvable master shows an explicit error instead of starting a new-character master pass.
 - Phase-two native rig continuation picks the fresh manifest `source` (or newest character asset) instead of the first scanned character in the workspace.
 - Motion dialog and Animate tab link to existing SQLite rigs; legacy workspace mask-rig JSON can be revealed from the Animate editor.
@@ -34,9 +35,11 @@
 
 ### Windows
 
+- Provider probes now distinguish spawn/timeout failures from real sign-in problems, retry once, and log to `%LOCALAPPDATA%\\com.jakes.sprite-maker\\logs\\provider-probes.log`.
+- Workspace initialization preflights Python (`py -3`, `python3`, or `python`), writes `.sprite-studio/python_launcher.json`, warns in Settings and after create/open when Python is missing, and injects the resolved command into generation prompts (including bare `python .sprite-studio/...` examples).
+- Provider failure messages keep the original error text and append auth help instead of replacing it.
 - Hid the empty console windows that flashed when Cursor CLI started bash tool processes.
 - Fixed deterministic rig rendering on Windows so `os.fsync` no longer uses a read-only handle (`Errno 9`).
- - Fixed planted-contact two-bone IK so bent limb chains close onto the target instead of kicking away from it.
 
 ## 0.3.2 — 2026-08-19
 
