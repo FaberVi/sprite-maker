@@ -181,7 +181,7 @@ fn recover_manifest_prefers_newest_imagegen_source() {
     assert_eq!(manifest.name, "master");
     assert!(manifest.source.as_deref().unwrap().contains("imagegen-sources"));
     assert!(manifest.files[0].starts_with("assets/characters/"));
-    assert!(root.join(manifest.files[0].replace('/', "\\")).is_file());
+    assert!(root.join(&manifest.files[0]).is_file());
     let rescanned = read_generation_manifest(&root).expect("manifest reload");
     assert!(rescanned.is_some(), "recovered manifest must pass validation on reload");
 
