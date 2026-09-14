@@ -47,16 +47,17 @@ fetch_macos_brew() {
   echo "Installed bundled ffmpeg to $dest"
 }
 
-fetch_macos_evermeet_x86() {
-  local dest="$BIN_DIR/ffmpeg-x86_64-apple-darwin"
+fetch_macos_evermeet() {
+  local arch="$1"
+  local dest="$BIN_DIR/ffmpeg-${arch}-apple-darwin"
   if [[ -f "$dest" ]]; then
     echo "ffmpeg already present at $dest"
     return 0
   fi
   local tmp
   tmp="$(mktemp -d)"
-  echo "Downloading ffmpeg x86_64 for macOS..."
-  curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/zip" -o "$tmp/ffmpeg.zip"
+  echo "Downloading ffmpeg ${arch} for macOS..."
+  curl -fsSL "https://evermeet.cx/ffmpeg/getrelease/ffmpeg/zip" -o "$tmp/ffmpeg.zip"
   unzip -oq "$tmp/ffmpeg.zip" -d "$tmp"
   cp "$tmp/ffmpeg" "$dest"
   chmod +x "$dest"
@@ -64,8 +65,16 @@ fetch_macos_evermeet_x86() {
   echo "Installed bundled ffmpeg to $dest"
 }
 
+fetch_macos_evermeet_x86() {
+  fetch_macos_evermeet x86_64
+}
+
+fetch_macos_evermeet_arm64() {
+  fetch_macos_evermeet aarch64
+}
+
 if [[ "$universal_macos" -eq 1 ]]; then
-  fetch_macos_brew aarch64
+  fetch_macos_evermeet_arm64
   fetch_macos_evermeet_x86
   exit 0
 fi
@@ -75,10 +84,10 @@ case "$host_triple" in
     fetch_linux
     ;;
   x86_64-apple-darwin)
-    fetch_macos_brew x86_64
+    fetch_macos_evermeet_x86
     ;;
   aarch64-apple-darwin)
-    fetch_macos_brew aarch64
+    fetch_macos_evermeet_arm64
     ;;
   *)
     echo "Unsupported host triple for bundled ffmpeg: $host_triple" >&2
