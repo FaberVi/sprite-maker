@@ -38,6 +38,8 @@
 - Provider probes now distinguish spawn/timeout failures from real sign-in problems, retry once, and log to `%LOCALAPPDATA%\\com.jakes.sprite-maker\\logs\\provider-probes.log`.
 - Workspace initialization preflights Python (`py -3`, `python3`, or `python`), writes `.sprite-studio/python_launcher.json`, warns in Settings and after create/open when Python is missing, and injects the resolved command into generation prompts (including bare `python .sprite-studio/...` examples).
 - Provider failure messages keep the original error text and append auth help instead of replacing it.
+- Static sprite completions now rescan assets referenced in the provider response when the workspace manifest was not refreshed, so the Media Gallery and chat artifact card update without F5.
+- Chat artifact cards prefer explicit `assets/...` output paths over stale animation-name inference when a new static sprite finishes.
 - Hid the empty console windows that flashed when Cursor CLI started bash tool processes.
 - Fixed deterministic rig rendering on Windows so `os.fsync` no longer uses a read-only handle (`Errno 9`).
 
