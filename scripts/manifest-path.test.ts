@@ -48,4 +48,12 @@ describe("manifest path normalization", () => {
     expect(shouldRecoverAssetsFromResponse(0, response, true)).toBe(false);
     expect(shouldRecoverAssetsFromResponse(0, "Done.", false)).toBe(false);
   });
+
+  test("requests asset recovery only when the manifest missed cited output paths", () => {
+    const response = "Saved assets/characters/knight.png.";
+    expect(shouldRecoverAssetsFromResponse(0, response, false)).toBe(true);
+    expect(shouldRecoverAssetsFromResponse(1, response, false)).toBe(false);
+    expect(shouldRecoverAssetsFromResponse(0, response, true)).toBe(false);
+    expect(shouldRecoverAssetsFromResponse(0, "Done.", false)).toBe(false);
+  });
 });

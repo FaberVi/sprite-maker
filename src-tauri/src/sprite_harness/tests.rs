@@ -599,6 +599,11 @@ fn native_rig_master_only_skips_mask_rig_instructions() {
     );
     assert!(prompt.contains("native rig animation"));
     assert!(prompt.contains("Do not write mask rigs"));
+    assert!(prompt.contains("MASTER HANDOFF CONTRACT"));
+    assert!(prompt.contains("assets/characters/<slug>.png"));
+    assert!(prompt.contains(".sprite-studio/last-generation.json"));
+    assert!(prompt.contains("category: \"characters\""));
+    assert!(prompt.contains("Do not report success unless both"));
     assert!(!prompt.contains("RIG_PLANNING_CONTRACT"));
 }
 

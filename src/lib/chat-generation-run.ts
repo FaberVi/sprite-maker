@@ -10,7 +10,7 @@ import {
 import { assetsFromManifestPaths, findAnimationWithOrderedFrames, latestCompletedAssistant } from "$lib/generation-reconcile";
 import { reportsGenerationFailure } from "$lib/message-generations";
 import {
-  extractAssetPathsFromResponse, findAssetByManifestPath, normalizeManifestPath, shouldRecoverAssetsFromResponse,
+  extractAssetPathsFromResponse, normalizeManifestPath, shouldRecoverAssetsFromResponse,
 } from "$lib/manifest-path";
 import {
   extractAnimateMotion, formatBlockingQualityNotice, orchestrateRigOnlyAnimation,
