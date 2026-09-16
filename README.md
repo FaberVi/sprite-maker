@@ -303,6 +303,37 @@ After the tag workflow creates the GitHub release, run `make publish-macos` to b
 
 Use `make help` to see the available local commands. Tauri creates platform-native installers on the relevant build host; this repository contains no Android or iOS targets.
 
+### Windows installer warnings
+
+Unsigned Windows installers are normal for open-source desktop apps. Defender SmartScreen may show **Windows protected your PC** or **Unknown publisher** until the project ships Authenticode-signed releases.
+
+**Install a GitHub release or local build**
+
+1. Choose **More info**.
+2. Choose **Run anyway**.
+
+If the file was downloaded from the browser, unblock it first:
+
+```powershell
+Unblock-File -Path ".\Sprite Studio_0.3.2_x64-setup.exe"
+```
+
+**Build from source on Windows**
+
+- Install [Visual Studio 2022 Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) with the **Desktop development with C++** workload.
+- If Smart App Control blocks freshly compiled binaries, add an exception or temporarily turn it off under **Windows Security → App & browser control**.
+- Set `core.autocrlf` to `false` so Git follows `.gitattributes`:
+
+  ```powershell
+  git config core.autocrlf false
+  ```
+
+**Ship signed Windows installers (maintainers)**
+
+1. Obtain a Windows code signing certificate (Standard or EV).
+2. Add repository secrets `WINDOWS_CERTIFICATE` (base64-encoded `.pfx`) and `WINDOWS_CERTIFICATE_PASSWORD`.
+3. The release workflow imports the certificate when those secrets are present and passes its thumbprint to Tauri through `tauri build --config` during the Windows build.
+
 ## Workspace layout
 
 Binary artifacts remain ordinary files below the selected project root, so a workspace can be backed up, inspected, versioned, or used by a game engine without a hosted Sprite Studio service.
