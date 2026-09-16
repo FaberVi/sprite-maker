@@ -1,5 +1,5 @@
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import type { Animation, AnimationDirectionMeta, AnimationFrameScoreReport, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, BrushStamp, CharacterAnchor, CharacterAnchorSummary, CharacterProfile, CharacterContractReport, CharacterPackExportResult, CleanAlphaReport, ContractRetryResult, Conversation, DirectionSetResult, ExportAnimationPreviewResult, ExportResult, FacingCheckReport, FrameOptimizationResult, GenerationManifest, GenerationSession, HardenAnimationOptions, HardenAnimationReport, ImageProviderInput, InterpolateRigAnimationFramesResult, InterpolateRigFramesResult, ListMissingMotionsResult, Message, MirrorAnimationResult, MotionBatchResult, MotionPlan, MotionPresetCatalog, PaintFrameAlphaResult, ProductionScoreReport, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, PythonRuntimeStatus, QualityReport, ReferenceCategory, ReferenceImage, RegionMaskRect, RegionRegenResult, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SharedPaletteReport, SidebarSnapshot, SizeContractReport, SplitStripResult, SpriteSheet, SpriteSheetInput, StripScoreReport, SubsampleVideoFramesResult, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind, WorkspaceRigSpec } from "$lib/types";
+import type { Animation, AnimationDirectionMeta, AnimationFrameScoreReport, AnimationInput, AnimationTemplate, Asset, AssetPack, AssetVersion, BackgroundJob, BrushStamp, CharacterAnchor, CharacterAnchorSummary, CharacterProfile, CharacterContractReport, CharacterPackExportResult, CleanAlphaReport, ContractRetryResult, Conversation, DirectionSetResult, ExportAnimationPreviewResult, ExportResult, FacingCheckReport, FrameOptimizationResult, GenerationManifest, GenerationSession, HardenAnimationOptions, HardenAnimationReport, ImageProviderInput, InterpolateRigAnimationFramesResult, InterpolateRigFramesResult, ListMissingMotionsResult, Message, MirrorAnimationResult, MotionBatchResult, MotionPlan, MotionPresetCatalog, PaintFrameAlphaResult, ProductionScoreReport, ProceduralVfxInput, ProjectBackup, ProviderConnectionTest, ProviderInstallResult, ProviderRequestOptions, ProviderStatus, PythonRuntimeStatus, QualityReport, ReferenceCategory, ReferenceImage, RefineGenerationPromptInput, RegionMaskRect, RegionRegenResult, RigFitReport, RigInput, RigRenderResult, RigSuggestion, Rig, SharedPaletteReport, SidebarSnapshot, SizeContractReport, SplitStripResult, SpriteSheet, SpriteSheetInput, StripScoreReport, SubsampleVideoFramesResult, TemplateApplication, TerrainExportInput, TerrainExportResult, VfxEffect, Workspace, Worktree, WorktreeKind, WorkspaceRigSpec } from "$lib/types";
 
 export const api = {
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
@@ -42,6 +42,12 @@ export const api = {
   testImageProvider: (input: ImageProviderInput) => invoke<ProviderConnectionTest>("test_image_provider", { input }),
   startProviderMessage: (conversationId: string, prompt: string, context?: string, options?: ProviderRequestOptions) => invoke<string>("start_provider_message", { conversationId, prompt, context, options }),
   cancelProviderRequest: (requestId: string) => invoke<void>("cancel_provider_request", { requestId }),
+  refineGenerationPrompt: (input: RefineGenerationPromptInput) => invoke<string>("refine_generation_prompt_command", { input }),
+  cancelRefineGenerationPrompt: (conversationId: string) => invoke<void>("cancel_refine_generation_prompt_command", { conversationId }),
+  appendConversationLogEntry: (input: { conversationId: string; requestId?: string; level: string; category: string; eventType: string; message: string; details?: Record<string, unknown> }) =>
+    invoke<void>("append_conversation_log_entry", { input }),
+  exportConversationDebugLog: (input: { conversationId: string; destinationPath: string }) =>
+    invoke<string>("export_conversation_debug_log", { input }),
   planMotion: (prompt: string, generation: ProviderRequestOptions["generation"]) => invoke<MotionPlan>("plan_motion", { prompt, generation }),
   scanAssets: (workspaceId: string) => invoke<Asset[]>("scan_assets", { workspaceId }),
   listAssets: (workspaceId: string) => invoke<Asset[]>("list_assets", { workspaceId }),
@@ -52,7 +58,8 @@ export const api = {
   listAssetPacks: (workspaceId: string) => invoke<AssetPack[]>("list_asset_packs", { workspaceId }),
   importAsset: (workspaceId: string, sourcePath: string, category: string) => invoke<Asset>("import_asset", { workspaceId, sourcePath, category }),
   renameAsset: (id: string, name: string) => invoke<Asset>("rename_asset", { id, name }),
-  deleteAsset: (id: string) => invoke<void>("delete_asset", { id }),
+  getAssetUsage: (id: string) => invoke<import("$lib/types").AssetUsage>("get_asset_usage", { id }),
+  deleteAsset: (id: string, force = false) => invoke<void>("delete_asset", { id, force }),
   exportAsset: (id: string) => invoke<ExportResult>("export_asset", { id }),
   exportGodotTileset: (input: TerrainExportInput) => invoke<TerrainExportResult>("export_godot_tileset", { input }),
   listAssetVersions: (assetId: string) => invoke<AssetVersion[]>("list_asset_versions", { assetId }),

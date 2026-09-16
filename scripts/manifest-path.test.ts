@@ -36,6 +36,9 @@ describe("manifest path normalization", () => {
     const response = "Saved assets/characters/astral_cartographer.png.\n\n[Preview](assets/characters/astral_cartographer.png)";
     expect(extractAssetPathsFromResponse(response)).toEqual(["assets/characters/astral_cartographer.png"]);
     expect(extractAssetPathsFromResponse("Wrote assets\\characters\\knight.png on Windows.")).toEqual(["assets/characters/knight.png"]);
+    expect(extractAssetPathsFromResponse(
+      "Master in .sprite-studio/imagegen-sources/stalker-idle/master.png",
+    )).toEqual([".sprite-studio/imagegen-sources/stalker-idle/master.png"]);
   });
 
   test("requests asset recovery only when the manifest missed cited output paths", () => {

@@ -15,6 +15,7 @@ const SEMI_OPAQUE_THRESHOLD: u8 = 200;
 
 pub(crate) fn clean_rgba_image(image: &RgbaImage) -> RgbaImage {
     let mut output = image.clone();
+    defringe(&mut output);
     for pixel in output.pixels_mut() {
         if pixel[3] == 0 {
             continue;

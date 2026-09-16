@@ -6,6 +6,7 @@ export type Worktree = { id: string; projectId: string; name: string; slug: stri
 export type Conversation = { id: string; workspaceId: string; worktreeId?: string; title: string; provider: string; providerSessionId?: string; createdAt: string; updatedAt: string; archivedAt?: string };
 export type Message = { id: string; conversationId: string; role: "user" | "assistant" | "system"; kind: string; content: string; status: "queued" | "running" | "completed" | "failed" | "cancelled"; metadata: Record<string, unknown>; createdAt: string };
 export type Asset = { id: string; workspaceId: string; name: string; path: string; relativePath: string; category: string; format: string; width: number; height: number; fileSize: number; hasAlpha: boolean; createdAt: string };
+export type AssetUsage = { animationNames: string[]; anchorSlugs: string[]; spriteSheetItems: number };
 export type AssetPack = { id: string; name: string; description: string; style: string; kind: string; files: string[]; createdAt: string };
 export type AssetVersion = { id: string; assetId: string; versionNumber: number; parentVersionId?: string; generationId?: string; path: string; format: string; width: number; height: number; fileSize: number; hasAlpha: boolean; contentHash: string; changeKind: string; available: boolean; selected: boolean; createdAt: string };
 export type ReferenceCategory = "character_appearance" | "clothing" | "face" | "weapon" | "pose" | "art_style" | "environment" | "palette" | "animation" | "vfx" | "anatomy" | "lighting" | "other";
@@ -102,6 +103,17 @@ export type WorkspaceRigSpec = {
   updatedAt: string;
 };
 export type AnimationPolishMode = "rig" | "ai-polish" | "full-redraw";
+export type RefineGenerationPromptInput = {
+  conversationId: string;
+  draft: string;
+  context?: string;
+  command?: SpriteSlashCommand;
+  generation?: ProviderRequestOptions["generation"];
+  model?: string;
+  reasoningEffort?: string;
+  animationMode?: AnimationPolishMode;
+  referenceIds?: string[];
+};
 export type SpriteGenerationMetadata = { kind: "sprite-generation"; name: string; category: string; fps: number; assetIds: string[]; animationId?: string };
 export type PackGenerationMetadata = { kind: "pack-generation"; packId: string };
 export type AnimationExportFormat = "sprite-studio" | "aseprite-json" | "texturepacker" | "godot-spriteframes";
@@ -153,6 +165,14 @@ export const RIG_MORPHOLOGIES: { id: RigMorphology; label: string }[] = [
 ];
 
 export type StudioError = { code: string; message: string };
+
+export function studioErrorCode(error: unknown): string | undefined {
+  if (typeof error === "string") {
+    try { return (JSON.parse(error) as StudioError).code; } catch { return undefined; }
+  }
+  if (error && typeof error === "object" && "code" in error) return String((error as StudioError).code);
+  return undefined;
+}
 
 export function errorMessage(error: unknown): string {
   if (typeof error === "string") {

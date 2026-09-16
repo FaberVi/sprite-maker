@@ -351,7 +351,9 @@ pub(crate) fn extract_video_frames_inner(
     let ffmpeg = resolve_ffmpeg_executable().ok_or_else(|| {
         CommandError::new("ffmpeg_missing", FFMPEG_MISSING_DETAIL)
     })?;
-    let status = std::process::Command::new(&ffmpeg)
+    let mut ffmpeg_command = std::process::Command::new(&ffmpeg);
+    crate::providers::apply_std_headless_flags(&mut ffmpeg_command);
+    let status = ffmpeg_command
         .arg("-hide_banner")
         .arg("-loglevel")
         .arg("error")

@@ -1,15 +1,20 @@
 mod inspect;
 mod pixel_normalize;
+mod removal;
 mod scan;
 
 #[cfg(test)]
 use inspect::safe_category;
 pub use inspect::{
-    __cmd__delete_asset, __cmd__import_asset, __cmd__list_asset_versions, __cmd__list_assets,
-    __cmd__rename_asset, __tauri_command_name_delete_asset, __tauri_command_name_import_asset,
+    __cmd__import_asset, __cmd__list_asset_versions, __cmd__list_assets,
+    __cmd__rename_asset, __tauri_command_name_import_asset,
     __tauri_command_name_list_asset_versions, __tauri_command_name_list_assets,
-    __tauri_command_name_rename_asset, delete_asset, get_asset, import_asset, list_asset_versions,
+    __tauri_command_name_rename_asset, get_asset, import_asset, list_asset_versions,
     list_assets, rename_asset,
+};
+pub use removal::{
+    __cmd__delete_asset, __cmd__get_asset_usage, __tauri_command_name_delete_asset,
+    __tauri_command_name_get_asset_usage, delete_asset, get_asset_usage,
 };
 pub(crate) use inspect::{inspect, list_assets_inner, upsert};
 pub(crate) use pixel_normalize::{

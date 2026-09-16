@@ -5,6 +5,7 @@
   import { api, assetUrl } from "$lib/api";
   import FacingPanel from "$lib/components/FacingPanel.svelte";
   import PromoteAnchorDialog from "$lib/components/PromoteAnchorDialog.svelte";
+  import { confirmAndDeleteAsset } from "$lib/asset-removal";
   import { errorMessage, type Animation, type Asset, type AssetVersion, type CharacterAnchorSummary, type CharacterProfile } from "$lib/types";
 
   let { asset, workspaceId, animations, onClose, onChanged, onDeleted, onError, onNotice }: {
@@ -67,10 +68,11 @@
     finally { busy = false; }
   }
   async function remove() {
-    if (!window.confirm(`Delete ${asset.name} from disk? This cannot be undone.`)) return;
     busy = true;
-    try { await api.deleteAsset(asset.id); onDeleted(); }
-    catch (error) { onError(errorMessage(error)); busy = false; }
+    try {
+      if (await confirmAndDeleteAsset(asset)) onDeleted();
+      else busy = false;
+    } catch (error) { onError(errorMessage(error)); busy = false; }
   }
   const formatBytes = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes/1024).toFixed(1)} KB` : `${(bytes/1048576).toFixed(1)} MB`;
   async function exportProfile() {
@@ -130,7 +132,7 @@
     {/if}
     <section><h3>ANIMATIONS</h3>{#if usedBy.length}<div class="used-list">{#each usedBy as animation}<div><Layers3 size={12} /><span>{animation.name}</span><small>{animation.frames.filter(frame => frame.assetId === asset.id).length} frame(s)</small></div>{/each}</div>{:else}<p class="muted">This image is not used by an animation.</p>{/if}</section>
     <section><h3>VERSIONS</h3>{#if versions.length}<div class="version-list">{#each versions as version}<div class:selected={version.selected}><span>v{version.versionNumber}</span><strong>{version.changeKind}</strong><small>{version.available ? new Date(version.createdAt).toLocaleString() : "Metadata only"}</small></div>{/each}</div>{:else}<p class="muted">No indexed versions yet.</p>{/if}</section>
-    <section class="danger"><button onclick={remove} disabled={busy}><Trash2 size={12} /> Delete asset</button></section>
+    <section class="danger"><button onclick={remove} disabled={busy}><Trash2 size={12} /> Remove from project</button><p class="muted">Deletes the file on disk and removes it from animations, anchors, and generation manifests when needed.</p></section>
   </div>
 </aside>
 {#if promoteDialogOpen}<PromoteAnchorDialog busy={busy} onClose={() => promoteDialogOpen = false} onConfirm={promoteAnchor} />{/if}

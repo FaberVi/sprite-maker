@@ -389,6 +389,7 @@ pub async fn ai_suggest_rig_points(
         &workspace,
         &prompt,
         &image_paths,
+        None,
     )
     .await?;
     parse_rig_suggestion_text(&response, master.width(), master.height()).ok_or_else(|| {

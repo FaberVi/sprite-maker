@@ -472,9 +472,9 @@ pub(crate) fn scan_generation_assets_inner(
     let root = workspace_path(state, workspace_id)?;
     let assets_root = root.join("assets");
     crate::allow_asset_directory(app, &assets_root, true)?;
-    let manifest = match read_generation_manifest(&root)? {
-        Some(manifest) => Some(manifest),
-        None => recover_manifest_from_imagegen_sources(&root)?,
+    let manifest = match read_generation_manifest(&root) {
+        Ok(Some(manifest)) => Some(manifest),
+        Ok(None) | Err(_) => recover_manifest_from_imagegen_sources(&root)?,
     };
     let Some(manifest) = manifest else {
         return Ok(Vec::new());

@@ -33,6 +33,7 @@ mod strip;
 pub(crate) use align::{blit_with_offset, nudge_animation_frames_inner};
 pub(crate) use anchors::{
     anchor_contract_text, get_anchor_inner, list_anchors_inner, promote_anchor_inner,
+    remove_anchors_for_asset_inner,
 };
 pub(crate) use character_contract::character_contract_check_inner;
 pub(crate) use character_profile::get_character_profile_inner;

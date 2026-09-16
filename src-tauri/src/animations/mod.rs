@@ -419,8 +419,7 @@ pub(crate) fn save_animation_inner(
     Ok(animation)
 }
 
-#[tauri::command]
-pub fn delete_animation(id: String, state: State<'_, AppState>) -> CommandResult<()> {
+pub(crate) fn delete_animation_inner(id: &str, state: &AppState) -> CommandResult<()> {
     let workspace_id: Option<String> = {
         let connection = state
             .db
@@ -429,13 +428,13 @@ pub fn delete_animation(id: String, state: State<'_, AppState>) -> CommandResult
         connection
             .query_row(
                 "SELECT workspace_id FROM animations WHERE id = ?1",
-                [&id],
+                [id],
                 |row| row.get(0),
             )
             .optional()?
     };
     if let Some(workspace_id) = workspace_id {
-        let file = workspace_path(&state, &workspace_id)?
+        let file = workspace_path(state, &workspace_id)?
             .join("animations")
             .join(format!("{id}.json"));
         if file.exists() {
@@ -448,6 +447,95 @@ pub fn delete_animation(id: String, state: State<'_, AppState>) -> CommandResult
         .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
     connection.execute("DELETE FROM animations WHERE id = ?1", [id])?;
     Ok(())
+}
+
+pub(crate) fn detach_asset_from_animations(
+    state: &AppState,
+    asset_id: &str,
+) -> CommandResult<()> {
+    let targets: Vec<(String, String, Option<String>, String, f64, bool, String, String, String, String)> = {
+        let connection = state
+            .db
+            .lock()
+            .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
+        let mut statement = connection.prepare(
+            r#"SELECT DISTINCT a.id, a.workspace_id, a.worktree_id, a.name, a.fps, a.looping, a.frames_json, a.review_status, a.created_at, a.updated_at
+               FROM animations a
+               JOIN animation_frames af ON af.animation_id = a.id
+               WHERE af.asset_id = ?1"#,
+        )?;
+        let rows = statement.query_map([asset_id], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get(5)?,
+                row.get(6)?,
+                row.get(7)?,
+                row.get(8)?,
+                row.get(9)?,
+            ))
+        })?;
+        rows.filter_map(Result::ok).collect()
+    };
+    for (
+        id,
+        workspace_id,
+        worktree_id,
+        name,
+        fps,
+        looping,
+        frames_json,
+        review_status,
+        _created_at,
+        _updated_at,
+    ) in targets
+    {
+        let frames = {
+            let connection = state
+                .db
+                .lock()
+                .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
+            resolve_animation_frames(&connection, &id, &frames_json)?
+        };
+        let remaining = frames
+            .into_iter()
+            .filter(|frame| frame.asset_id != asset_id)
+            .collect::<Vec<_>>();
+        if remaining.is_empty() {
+            delete_animation_inner(&id, state)?;
+            continue;
+        }
+        let motion_plan = {
+            let connection = state
+                .db
+                .lock()
+                .map_err(|_| CommandError::new("database_locked", "Database lock was poisoned"))?;
+            load_motion_plan(&connection, &id)?
+        };
+        save_animation_inner(
+            crate::models::AnimationInput {
+                id: Some(id),
+                workspace_id,
+                worktree_id,
+                name,
+                fps,
+                looping,
+                frames: remaining,
+                motion_plan,
+                review_status: Some(review_status),
+            },
+            state,
+        )?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_animation(id: String, state: State<'_, AppState>) -> CommandResult<()> {
+    delete_animation_inner(&id, &state)
 }
 
 mod export;

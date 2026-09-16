@@ -28,6 +28,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use providers::RefineCancelEntry;
 use tauri::{AppHandle, Manager};
 use tokio::sync::oneshot;
 
@@ -37,6 +38,7 @@ const APP_IDENTIFIER: &str = "com.jakes.sprite-maker";
 pub struct AppState {
     db: Arc<Mutex<rusqlite::Connection>>,
     cancellers: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+    refine_cancellers: Arc<Mutex<HashMap<String, RefineCancelEntry>>>,
     generations: Arc<Mutex<HashMap<String, GenerationSnapshot>>>,
 }
 
@@ -57,6 +59,7 @@ impl AppState {
         Self {
             db: Arc::new(Mutex::new(connection)),
             cancellers: Arc::new(Mutex::new(HashMap::new())),
+            refine_cancellers: Arc::new(Mutex::new(HashMap::new())),
             generations: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -231,6 +234,8 @@ pub fn run() {
             conversations::record_chat_assistant,
             conversations::record_chat_turn,
             conversations::update_message_metadata,
+            conversations::append_conversation_log_entry,
+            conversations::export_conversation_debug_log,
             providers::detect_providers,
             providers::install_agent_provider,
             providers::authenticate_agent_provider,
@@ -239,6 +244,8 @@ pub fn run() {
             providers::test_image_provider,
             providers::start_provider_message,
             providers::cancel_provider_request,
+            providers::refine_generation_prompt_command,
+            providers::cancel_refine_generation_prompt_command,
             motion_planner::plan_motion,
             references::list_reference_images,
             references::import_reference_image,
@@ -256,6 +263,7 @@ pub fn run() {
             assets::import_asset,
             assets::rename_asset,
             assets::delete_asset,
+            assets::get_asset_usage,
             assets::export_asset,
             terrain::export_godot_tileset,
             assets::get_generation_manifest,

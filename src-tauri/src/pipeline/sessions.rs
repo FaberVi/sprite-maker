@@ -156,6 +156,23 @@ pub(crate) fn append_generation_session_for_workspace(
     }
 }
 
+fn resolve_session_thumbnail(
+    workspace_root: &Path,
+    thumbnail_path: Option<String>,
+) -> Option<String> {
+    thumbnail_path.and_then(|raw| {
+        let path = Path::new(&raw);
+        let absolute = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            workspace_root.join(path)
+        };
+        absolute
+            .is_file()
+            .then(|| absolute.to_string_lossy().into_owned())
+    })
+}
+
 pub(crate) fn list_generation_sessions_inner(
     state: &AppState,
     workspace_id: &str,
@@ -170,6 +187,19 @@ pub(crate) fn list_generation_sessions_inner(
             worktree_id
                 .map(|id| session.worktree_id == id)
                 .unwrap_or(true)
+        })
+        .map(|session| {
+            let thumbnail_path = resolve_session_thumbnail(&root, session.thumbnail_path);
+            GenerationSession {
+                session_id: session.session_id,
+                worktree_id: session.worktree_id,
+                kind: session.kind,
+                animation_id: session.animation_id,
+                manifest_path: session.manifest_path,
+                thumbnail_path,
+                score: session.score,
+                created_at: session.created_at,
+            }
         })
         .collect())
 }

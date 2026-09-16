@@ -6,6 +6,7 @@ use crate::assets::write_generation_manifest;
 use crate::models::GenerationManifest;
 use super::test_fixtures::{setup_hero_workspace, temp_pipeline_state};
 use crate::workspace::workspace_path;
+use std::path::Path;
 
 #[test]
 fn append_generation_session_writes_index() {
@@ -83,7 +84,16 @@ fn write_generation_manifest_appends_session_index() {
         list_generation_sessions_inner(&state, &workspace.id, Some(worktree_id)).expect("list");
     assert!(!sessions.is_empty());
     assert_eq!(sessions[0].kind, "generation");
-    assert_eq!(sessions[0].thumbnail_path.as_deref(), Some("assets/characters/hero.png"));
+    let expected_thumb = project.join("assets/characters/hero.png");
+    let resolved_thumb = sessions[0]
+        .thumbnail_path
+        .as_deref()
+        .map(Path::new)
+        .expect("thumbnail path");
+    assert_eq!(
+        resolved_thumb.canonicalize().expect("canonical thumb"),
+        expected_thumb.canonicalize().expect("canonical expected"),
+    );
 
     drop(state);
     std::fs::remove_dir_all(root).expect("cleanup");

@@ -13,8 +13,9 @@
     regionY = $bindable(0),
     regionW = $bindable(16),
     regionH = $bindable(16),
-    brushRadius = 8,
+    brushRadius = $bindable(8),
     tool = $bindable<"rect" | "brush" | "erase">("rect"),
+    showToolbar = true,
   }: {
     imageSrc: string;
     frameWidth: number;
@@ -29,6 +30,7 @@
     regionH?: number;
     brushRadius?: number;
     tool?: "rect" | "brush" | "erase";
+    showToolbar?: boolean;
   } = $props();
 
   let canvasEl = $state<HTMLCanvasElement | null>(null);
@@ -115,12 +117,14 @@
 </script>
 
 <div class="mask-overlay">
-  <div class="tools">
-    <button class:active={tool === "rect"} onclick={() => tool = "rect"}>Rect</button>
-    <button class:active={tool === "brush" || tool === "erase"} onclick={() => tool = mode === "erase" ? "erase" : "brush"}>Brush</button>
-    <label>Radius<input type="number" min="1" max="64" bind:value={brushRadius} /></label>
-    <button onclick={clearMask}>Clear</button>
-  </div>
+  {#if showToolbar}
+    <div class="tools">
+      <button class:active={tool === "rect"} onclick={() => tool = "rect"}>Rect</button>
+      <button class:active={tool === "brush" || tool === "erase"} onclick={() => tool = mode === "erase" ? "erase" : "brush"}>Brush</button>
+      <label>Radius<input type="number" min="1" max="64" bind:value={brushRadius} /></label>
+      <button onclick={clearMask}>Clear</button>
+    </div>
+  {/if}
   <div class="stage" style={`width:${frameWidth * displayScale}px;height:${frameHeight * displayScale}px`}>
     <img src={imageSrc} alt="" style={`width:${frameWidth * displayScale}px;height:${frameHeight * displayScale}px`} />
     <canvas

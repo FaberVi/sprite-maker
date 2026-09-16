@@ -1,4 +1,7 @@
-use super::{explicit_size, infer_brief, studio_prompt, HarnessKind, SpriteBrief};
+use super::{
+    clean_refined_prompt_response, explicit_size, infer_brief, refine_generation_prompt, studio_prompt,
+    HarnessKind, SpriteBrief,
+};
 use crate::models::GenerationOptions;
 
 #[test]
@@ -597,4 +600,40 @@ fn native_rig_master_only_skips_mask_rig_instructions() {
     assert!(prompt.contains("native rig animation"));
     assert!(prompt.contains("Do not write mask rigs"));
     assert!(!prompt.contains("RIG_PLANNING_CONTRACT"));
+}
+
+#[test]
+fn refine_generation_prompt_includes_draft_command_and_canvas() {
+    let generation = GenerationOptions {
+        quality: "mid".into(),
+        width: 64,
+        height: 64,
+        frames: 8,
+        fps: 12,
+        frame_mode: "fixed".into(),
+        min_frames: 8,
+        max_frames: 12,
+        allow_interpolation: true,
+        allow_auto_adjust: false,
+    };
+    let prompt = refine_generation_prompt(
+        "/animate cavaliere blu che corre",
+        Some("Selected art direction: Pixel RPG"),
+        Some("animate"),
+        Some(&generation),
+        Some("rig"),
+    );
+    assert!(prompt.contains("PROMPT REFINER CONTRACT"));
+    assert!(prompt.contains("USER DRAFT\n/animate cavaliere blu che corre"));
+    assert!(prompt.contains("ANIMATION"));
+    assert!(prompt.contains("Canvas: 64x64"));
+    assert!(prompt.contains("Animation polish mode selected in chat: rig."));
+}
+
+#[test]
+fn clean_refined_prompt_response_strips_code_fences() {
+    assert_eq!(
+        clean_refined_prompt_response("```\n/animate A crisp 8-frame run cycle.\n```"),
+        "/animate A crisp 8-frame run cycle."
+    );
 }

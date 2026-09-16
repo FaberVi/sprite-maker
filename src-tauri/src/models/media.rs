@@ -19,6 +19,14 @@ pub struct Asset {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetUsage {
+    pub animation_names: Vec<String>,
+    pub anchor_slugs: Vec<String>,
+    pub sprite_sheet_items: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AssetVersion {

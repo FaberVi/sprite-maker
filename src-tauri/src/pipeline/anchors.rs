@@ -90,6 +90,24 @@ pub(crate) fn list_anchors_inner(
     Ok(anchors)
 }
 
+pub(crate) fn remove_anchors_for_asset_inner(
+    workspace_id: &str,
+    asset_id: &str,
+    state: &AppState,
+) -> CommandResult<()> {
+    let root = workspace_path(state, workspace_id)?;
+    for anchor in list_anchors_inner(workspace_id, state)? {
+        if anchor.asset_id != asset_id {
+            continue;
+        }
+        let path = anchor_path(&root, &anchor.slug);
+        if path.is_file() {
+            std::fs::remove_file(path)?;
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn get_anchor_inner(
     workspace_id: &str,
     slug: &str,

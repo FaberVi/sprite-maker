@@ -6,7 +6,7 @@ use super::image_providers::{is_provider_native_image, load_image_provider};
 use super::modes::provider_is_authenticated;
 use super::stream::{provider_auth_help, provider_display_name};
 use crate::{
-    conversations::{add_message, get_conversation},
+    conversations::{add_message, append_conversation_log, get_conversation},
     error::{CommandError, CommandResult},
     models::ProviderRequestOptions,
     references,
@@ -132,6 +132,24 @@ pub(crate) fn start_provider_run(
     )?;
     let assistant = add_message(state, &conversation_id, "assistant", "text", "", "running")?;
     let request_id = Uuid::new_v4().to_string();
+    append_conversation_log(
+        state,
+        &conversation_id,
+        Some(&request_id),
+        "info",
+        "chat",
+        "user_message",
+        &prompt,
+        serde_json::json!({
+            "provider": provider_id,
+            "model": options.model,
+            "reasoningEffort": options.reasoning_effort,
+            "command": options.command,
+            "referenceCount": options.reference_ids.len(),
+            "assistantMessageId": assistant.id,
+            "imageProviderId": options.image_provider_id,
+        }),
+    )?;
     let (cancel_tx, cancel_rx) = oneshot::channel();
     state
         .cancellers
